@@ -15,6 +15,10 @@ const _CATS_CAFE = {info: "#6cc4b4", graph: "#8fb0e8", meca: "#e3a35c", ethique:
 const _CATS_TERM = {info: "#39ff7a", graph: "#4fd2ff", meca: "#ffc23d", ethique: "#ff6b8b", travail: "#c99cff", etude: "#79a88a", perso: "#d4ff5f"};
 const _CATS_PAPIER = {info: "#1f7f7a", graph: "#3a5fb0", meca: "#b8741a", ethique: "#b8344f", travail: "#7650a8", etude: "#7a6a58", perso: "#4f8a3a"};
 
+const _CATS_ARC = {info: "#00a3b8", graph: "#2f5bff", meca: "#f06a00", ethique: "#e0145e", travail: "#9b2fe0", etude: "#13a04a", perso: "#c99600"};
+const _CATS_OBS = {info: "#4fc3b5", graph: "#7f9cf5", meca: "#e0a458", ethique: "#e8738a", travail: "#b794f6", etude: "#9aa3b2", perso: "#78c38a"};
+const _CATS_MC = {info: "#4aedd9", graph: "#5b8cff", meca: "#f5c82e", ethique: "#ff4a3a", travail: "#b070ff", etude: "#c9c9c9", perso: "#2ee66b"};
+
 const THEMES = {
   nuit: {nom: "Nuit", sombre: true, BG: "#0a1019", SURFACE: "#121b29", SURFACE2: "#1a2638", SURFACE3: "#243349", INK: "#e8eef8", MUTED: "#8997ae", RULE: "#222f44", GRID: "#1a2536", TODAY_BG: "#172338", ACCENT: "#5b9bff", DANGER: "#ff7085", TINT: .78, SCROLL: "#31425e", LINE2: "#3b4c68", cats: _CATS_SOMBRE},
   charbon: {nom: "Charbon", sombre: true, BG: "#0e0f11", SURFACE: "#18191c", SURFACE2: "#222427", SURFACE3: "#2e3135", INK: "#ebecee", MUTED: "#979ca5", RULE: "#2a2c30", GRID: "#212225", TODAY_BG: "#20242b", ACCENT: "#6ea3ff", DANGER: "#ff7a85", TINT: .78, SCROLL: "#3a3d44", LINE2: "#454951", cats: _CATS_SOMBRE},
@@ -25,6 +29,9 @@ const THEMES = {
   cafe: {nom: "Espresso", sombre: true, BG: "#120d0a", SURFACE: "#1c1511", SURFACE2: "#271d17", SURFACE3: "#35281f", INK: "#f3e9df", MUTED: "#ab9a89", RULE: "#2f241c", GRID: "#241b15", TODAY_BG: "#2a1f17", ACCENT: "#e3a35c", DANGER: "#ff7b6b", TINT: .78, SCROLL: "#45362a", LINE2: "#52412f", cats: _CATS_CAFE},
   terminal: {nom: "Terminal", sombre: true, mono: true, BG: "#020503", SURFACE: "#060e08", SURFACE2: "#0b170e", SURFACE3: "#122615", INK: "#c8ffd8", MUTED: "#5f9a70", RULE: "#11301a", GRID: "#0a1c0f", TODAY_BG: "#0c2213", ACCENT: "#39ff7a", DANGER: "#ff5f5f", TINT: .8, SCROLL: "#1b3d24", LINE2: "#1f4a2a", cats: _CATS_TERM},
   papier: {nom: "Papier", sombre: false, BG: "#ebe3d5", SURFACE: "#fbf7ef", SURFACE2: "#f3ecdf", SURFACE3: "#e7dccb", INK: "#2b2118", MUTED: "#7b6b5a", RULE: "#e0d5c3", GRID: "#ece3d4", TODAY_BG: "#f6ead3", ACCENT: "#c2552d", DANGER: "#c0392b", TINT: .84, SCROLL: "#d6c8b3", LINE2: "#cdbda5", cats: _CATS_PAPIER},
+  arcenciel: {nom: "Arc-en-ciel", sombre: false, BG: "#efe6ff", SURFACE: "#ffffff", SURFACE2: "#fdf1ff", SURFACE3: "#ffe3f3", INK: "#2a1050", MUTED: "#7a5ea8", RULE: "#e6d4ff", GRID: "#f1e6ff", TODAY_BG: "#fff2a8", ACCENT: "#ff2d95", DANGER: "#e0102f", TINT: .5, SCROLL: "#d9b8ff", LINE2: "#c9a8f5", cats: _CATS_ARC},
+  obsidienne: {nom: "Obsidienne", sombre: true, BG: "#050506", SURFACE: "#0e0e11", SURFACE2: "#16161b", SURFACE3: "#202027", INK: "#f1ede4", MUTED: "#8f8b82", RULE: "#1c1c22", GRID: "#121216", TODAY_BG: "#18160f", ACCENT: "#d6b36a", DANGER: "#ff7a7a", TINT: .8, SCROLL: "#2b2b33", LINE2: "#34343d", cats: _CATS_OBS},
+  minecraft: {nom: "Minecraft", sombre: true, mono: true, bloc: true, BG: "#1b140e", SURFACE: "#2a1f15", SURFACE2: "#37291b", SURFACE3: "#4a3824", INK: "#f4ecd8", MUTED: "#b3a283", RULE: "#4a3824", GRID: "#241b12", TODAY_BG: "#26391a", ACCENT: "#5fbf3a", DANGER: "#ff5555", TINT: .72, SCROLL: "#5a4630", LINE2: "#5d472e", cats: _CATS_MC},
 };
 const PALETTE_AUTO = ["#f5d061", "#ff9f6b", "#6be0c0", "#e58cff", "#7fd3ff", "#ff8fb1", "#b6e36b", "#ffc46b", "#8fa8ff", "#f27474"];
 const FORMES = [["Carré", 0.0], ["Léger", 0.55], ["Arrondi", 1.0], ["Très arrondi", 1.6]];
@@ -101,6 +108,7 @@ function appliquerReglages(reg) {
   const acc = reg.accent || t.ACCENT;
   T.ACCENT = acc; T.ACCENT_HOVER = mix(acc, .22); T.ACCENT_INK = encreSur(acc);
   T.RAD = (FORMES[parseInt(reg.forme ?? 2)] || FORMES[2])[1];
+  if (t.bloc) T.RAD = 0;          // thème « blocs » : coins carrés quel que soit le réglage de forme
   T.TXT = Math.max(.8, Math.min(1.4, (parseInt(reg.texte) || 100) / 100));
   let hd = parseInt(reg.h_debut ?? 7), hf = parseInt(reg.h_fin ?? 22);
   if (isNaN(hd)) hd = 7; if (isNaN(hf)) hf = 22;
