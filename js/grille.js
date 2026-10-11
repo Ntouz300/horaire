@@ -150,8 +150,10 @@ Object.assign(App.prototype, {
       const lim = this.vue !== "jour" ? 90 : 600;
       lignes += `<div class="b-note">${esc(note.slice(0, lim) + (note.length > lim ? "…" : ""))}</div>`;
     }
+    const sticker = T.REG_THEME === "minecraft" && y1 - y0 >= 48 && x1 - x0 >= 90
+      ? `<img class="b-sticker" alt="" src="${spriteURL(iconeCat(b.cat || "perso"), 2)}">` : "";
     return `<div class="bloc${cls}" data-id="${esc(b.id)}" style="left:${x0}px;top:${y0}px;width:${x1 - x0}px;height:${y1 - y0}px;background:${fill};border-color:${line};--bg:${bg}">
-      ${b.fait ? `<span class="b-fait" style="color:${col}">✓</span>` : ""}${lignes}<div class="poignee"></div></div>`;
+      ${b.fait ? `<span class="b-fait" style="color:${col}">✓</span>` : ""}${lignes}${sticker}<div class="poignee"></div></div>`;
   },
 
   /* ---------- interactions */

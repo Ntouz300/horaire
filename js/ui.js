@@ -134,7 +134,7 @@ function dialogue(titre, message, boutons) {
   return new Promise((res) => {
     const m = new Modal(titre, null, {classe: "dialogue"});
     m.carte.append(el("p.message", {texte: message}));
-    const d = boutons.map(([t, v, s]) => bouton(t, () => { m.fermer(); res(v); }, s));
+    const d = boutons.map(([t, v, s]) => bouton(t, () => { res(v); m.fermer(); }, s));   // res(v) AVANT fermer() (qui répond null)
     m.barre([], d);
     m.clicVoile = () => { m.fermer(); res(null); };
     const vieux = m.fermer.bind(m);

@@ -1,8 +1,8 @@
 /* Service worker : l'app s'ouvre même sans Internet (les données restent sur l'iPad et se synchronisent au retour). */
-const VERSION = "horaire-v2";
-const FICHIERS = ["./", "index.html", "app.css?v=2", "manifest.webmanifest", "icones/icone-180.png", "icones/icone-192.png", "icones/icone-512.png",
-  "js/base.js?v=2", "js/ui.js?v=2", "js/sync.js?v=2", "js/main.js?v=2", "js/grille.js?v=2", "js/panneaux.js?v=2", "js/editeurs.js?v=2",
-  "js/horloge.js?v=2", "js/dessin.js?v=2"];
+const VERSION = "horaire-v3";
+const FICHIERS = ["./", "index.html", "app.css?v=3", "manifest.webmanifest", "icones/icone-180.png", "icones/icone-192.png", "icones/icone-512.png",
+  "js/base.js?v=3", "js/stickers.js?v=3", "js/ui.js?v=3", "js/sync.js?v=3", "js/main.js?v=3", "js/grille.js?v=3", "js/panneaux.js?v=3", "js/editeurs.js?v=3",
+  "js/horloge.js?v=3", "js/dessin.js?v=3"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(FICHIERS)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== VERSION).map(k => caches.delete(k)))).then(() => self.clients.claim()));

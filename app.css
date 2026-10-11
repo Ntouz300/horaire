@@ -355,3 +355,11 @@ input[type="time"].saisie, input[type="date"].saisie { min-height: 42px; }
   .reglages-corps { grid-template-columns: 1fr; }
   .grille2 { grid-template-columns: 1fr; }
 }
+
+/* stickers du thème Minecraft */
+.b-sticker { position: absolute; right: 7px; bottom: 7px; width: 20px; height: 20px; image-rendering: pixelated; pointer-events: none; opacity: .95; }
+.hotbar { display: inline-flex; gap: 2px; margin-left: auto; }
+.hotbar .slot { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; background: var(--surface3); border: 1px solid var(--line2); box-sizing: border-box; }
+.hotbar .slot.sel { border: 2px solid var(--ink); }
+.hotbar img { width: 24px; height: 24px; image-rendering: pixelated; }
+.hotbar + .leg-aide { margin-left: 0; }
