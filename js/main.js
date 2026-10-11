@@ -14,6 +14,7 @@ class App {
     this.undo = []; this.selId = null; this.pressePapier = null; this.drag = null;
     this.vue = this.reglagesLocaux.vue === "jour" ? "jour" : "semaine";
     this.onglet = "taches"; this.fEch = "avenir"; this.fNote = ""; this.qNote = "";
+    this.page = "accueil";
     this.cacherSaute = false;
     this.dernierClicVide = null;
     this.sem = bornerLundi(aujourdhui());
@@ -32,6 +33,8 @@ class App {
   }
 
   get reglages() { return this.donnees ? this.donnees.reglages : DEFAUT_REGLAGES; }
+  /* données de l'horaire actif (modele, semaines, echeances, critiques, relaches, imports) */
+  get ses() { return donneesHoraire(this.donnees, HID); }
 
   /* lien scanné depuis le PC : #k=CLE&u=URL */
   lireLien() {
@@ -79,6 +82,9 @@ class App {
   demarrerInterface() {
     this.donnees = normaliser(this.donnees);
     for (const k of REG_LOCAUX) if (k in this.reglagesLocaux) this.donnees.reglages[k] = this.reglagesLocaux[k];
+    activerHoraire(metaHoraire(this.donnees, this.donnees.reglages.horaire || "aut26"));
+    this.sem = bornerLundi(aujourdhui());
+    this.jourVue = memeJour(this.sem, lundiDe(aujourdhui())) ? jourSemaine(aujourdhui()) : 0;
     appliquerCategories(this.donnees.categories);
     appliquerReglages(Object.assign({}, DEFAUT_REGLAGES, this.donnees.reglages));
     this.construire();
@@ -107,6 +113,7 @@ class App {
   /* ---------- synchro */
   peutAppliquerDistant() {
     if (this.drag && this.drag.moved) return false;
+    if (this.page === "notes" && this.ecrans && this.ecrans.notes.sale) return false;
     return !Pile.some(p => p.estModal);
   }
   apresDistant(noms) {
@@ -116,13 +123,21 @@ class App {
     }
     this.enregistrerLocal();
     this.statut(`Mis à jour depuis le PC à ${new Date().toTimeString().slice(0, 5)}`);
+    let actif = this.donnees.reglages.horaire || "aut26";
+    if (!listeHoraires(this.donnees).some(h => h.id === actif)) actif = this.donnees.reglages.horaire = "aut26";
+    const h = metaHoraire(this.donnees, actif);
+    const changeHoraire = h.id !== HID || joursEntre(isoDate(h.debut), SESSION_DEBUT) !== 0 || h.nb !== SESSION_SEMAINES || "Horaire " + h.nom !== APP_TITLE;
+    if (changeHoraire) { activerHoraire(h); this.sem = bornerLundi(this.sem); }
     if (this.selId && !this.blocParId(this.selId)) this.selId = null;
-    if (noms.has("categories") || noms.has("reglages")) {
+    if (noms.has("categories") || noms.has("reglages") || changeHoraire) {
       appliquerCategories(this.donnees.categories);
       appliquerReglages(Object.assign({}, DEFAUT_REGLAGES, this.donnees.reglages));
       this.construire();
+      return;
     }
     this.dessinerTout();
+    if (this.page !== "horaire") this.ecrans[this.page].rafraichir();
+    if (noms.has("horaires")) this.rail.maj();
     if (noms.has("alarmes") && this.fenHorloge) this.fenHorloge.dessinerAlarmes();
   }
   majEtatSynchro() {
@@ -130,6 +145,7 @@ class App {
     if (this.lblAccueil && s.etat === "erreur") this.lblAccueil.textContent = "Erreur : " + s.detail;
     if (!this.lblSync) return;
     let txt, col;
+    const rail = this.rail && this.rail.lblSync;
     if (!s.configuree()) { txt = "● non reliée au PC"; col = "var(--muted)"; }
     else if (s.etat === "connectée") {
       txt = Object.keys(s.enVol).length ? "● envoi…" : s.detail ? "● " + s.detail : "● synchronisé";
@@ -137,6 +153,7 @@ class App {
     } else { txt = "● " + s.etat; col = s.etat === "erreur" ? "var(--danger)" : "var(--muted)"; }
     this.lblSync.textContent = txt;
     this.lblSync.style.color = col;
+    if (rail) { rail.textContent = "●"; rail.title = txt.replace("● ", ""); rail.style.color = col; }
     if (this.fenSync) this.fenSync.majEtat();
   }
 
@@ -146,6 +163,40 @@ class App {
     const zone = document.getElementById("app");
     zone.innerHTML = "";
     document.body.classList.toggle("sans-horloge", this.reglages.horloge === false);
+    document.title = APP_TITLE;
+    this.rail = new Rail(this);
+    const H = el("div.ecran.ecran-horaire");
+    this.ecrans = {horaire: {el: H}, accueil: new PageAccueil(this), notes: new PageNotes(this), resultats: new PageResultats(this)};
+    zone.append(el("div.coque", null, this.rail.el, el("div.pages", null, ...Object.values(this.ecrans).map(e => e.el))));
+    this.construireHoraire(H);
+    this.aller(this.page);
+  }
+
+  /* change de page dans le menu */
+  aller(page) {
+    if (!this.ecrans || !this.ecrans[page]) page = "accueil";
+    if (page !== "notes" && this.page === "notes" && this.ecrans) this.ecrans.notes.enregistrer();
+    this.page = page;
+    for (const [k, e] of Object.entries(this.ecrans)) e.el.hidden = k !== page;
+    document.body.dataset.page = page;
+    if (page !== "horaire") document.body.classList.remove("carnet-ouvert");
+    this.rail.maj();
+    if (page === "horaire") this.dessinerTout();
+    else this.ecrans[page].rafraichir();
+  }
+  choisirHoraire(id) {
+    const h = metaHoraire(this.donnees, id);
+    this.donnees.reglages.horaire = h.id;
+    activerHoraire(h);
+    this.sem = bornerLundi(aujourdhui());
+    this.jourVue = memeJour(this.sem, lundiDe(aujourdhui())) ? jourSemaine(aujourdhui()) : 0;
+    this.selId = null; this.undo = [];
+    this.sauver();
+    this.page = "horaire";
+    this.construire();
+  }
+
+  construireHoraire(zone) {
     // en-tête
     this.lblSemaine = el("div.mono.muted.petit-titre");
     this.barreSession = el("div.barre-session");
@@ -176,9 +227,8 @@ class App {
     this.btnCarnet.classList.add("btn-carnet");
     const outils = el("div.barre-outils", null,
       bouton("+  Ajouter un bloc", () => this.nouveauBloc(), "primary"),
-      bouton("Horloge", () => this.ouvrirHorloge()),
+      bouton(metaHoraire(this.donnees, HID).nom + "  ▾", () => new ChoixHoraire(this).montrer()),
       bouton("Matières", () => new Matieres(this).montrer()),
-      bouton("Réglages", () => new Reglages(this).montrer()),
       caseACocher(this.cacherSaute, (v) => { this.cacherSaute = v; this.dessinerGrille(); }, "Cacher les blocs « je saute »"),
       el("div.espace"), this.lblSync, this.lblSave,
       bouton("Exporter", () => this.exporter()), bouton("Importer", () => this.importer()), this.btnCarnet);
@@ -227,7 +277,7 @@ class App {
 
   remplirSemaines() {
     const aujIdx = Math.floor(joursEntre(SESSION_DEBUT, bornerLundi(aujourdhui())) / 7);
-    const crit = new Set(this.donnees.critiques || []), rel = new Set(this.donnees.relaches || []);
+    const crit = new Set(this.ses.critiques || []), rel = new Set(this.ses.relaches || []);
     this.selSem.innerHTML = "";
     for (let i = 0; i < SESSION_SEMAINES; i++) {
       const l = lundiSemaine(i), k = iso(l);
@@ -244,31 +294,34 @@ class App {
   }
 
   /* ---------- semaines : données */
-  entreeSemaine() { return this.donnees.semaines[iso(this.sem)]; }
+  entreeSemaine() { return this.ses.semaines[iso(this.sem)]; }
   semaineModifiee() { const s = this.entreeSemaine(); return !!(s && s.blocs); }
-  blocsVue() { const s = this.entreeSemaine(); return s && s.blocs ? s.blocs : this.donnees.modele; }
+  blocsVue() { const s = this.entreeSemaine(); return s && s.blocs ? s.blocs : this.ses.modele; }
   blocsEdit() {
     const k = iso(this.sem);
-    const s = this.donnees.semaines[k] = this.donnees.semaines[k] || {};
-    if (!s.blocs) s.blocs = clone(this.donnees.modele);
+    const s = this.ses.semaines[k] = this.ses.semaines[k] || {};
+    if (!s.blocs) s.blocs = clone(this.ses.modele);
     return s.blocs;
   }
   tachesVue() { const s = this.entreeSemaine(); return (s && s.taches) || []; }
   tachesEdit() {
     const k = iso(this.sem);
-    const s = this.donnees.semaines[k] = this.donnees.semaines[k] || {};
+    const s = this.ses.semaines[k] = this.ses.semaines[k] || {};
     if (!s.taches) s.taches = [];
     return s.taches;
   }
   blocsDe(d) {
-    const s = this.donnees.semaines[iso(lundiDe(d))];
-    const src = s && s.blocs ? s.blocs : this.donnees.modele;
+    const h = horairePour(this.donnees, d, HID);
+    if (!h) return [];
+    const ses = donneesHoraire(this.donnees, h.id);
+    const s = ses.semaines[iso(lundiDe(d))];
+    const src = s && s.blocs ? s.blocs : ses.modele;
     return src.filter(b => b.jour === jourSemaine(d) && b.statut !== "saute").sort((a, b) => toMin(a.debut) - toMin(b.debut));
   }
   blocParId(id) { return this.blocsVue().find(b => b.id === id) || null; }
   echeancesDu(d) {
     const k = iso(d);
-    return this.donnees.echeances.filter(e => e.date === k && !e.fait).sort((a, b) => (a.heure || "99").localeCompare(b.heure || "99"));
+    return this.ses.echeances.filter(e => e.date === k && !e.fait).sort((a, b) => (a.heure || "99").localeCompare(b.heure || "99"));
   }
   idxSem() { return Math.floor(joursEntre(SESSION_DEBUT, this.sem) / 7); }
 
@@ -308,7 +361,7 @@ class App {
 
   /* ---------- dessin */
   dessinerTout() {
-    if (!this.interfacePrete) return;
+    if (!this.interfacePrete || this.page !== "horaire") return;
     this.dessinerSemaine();
     this.dessinerEcheances();
     this.dessinerNotes();
@@ -324,7 +377,7 @@ class App {
   }
   redessinerBientot() {
     clearTimeout(this._rt);
-    this._rt = setTimeout(() => { if (this.interfacePrete) this.dessinerGrille(); }, 80);
+    this._rt = setTimeout(() => { if (this.interfacePrete && this.page === "horaire") this.dessinerGrille(); }, 80);
   }
 
   majBarreSemaine() {
@@ -333,7 +386,7 @@ class App {
     let nEch = 0;
     for (let i = 0; i < 7; i++) nEch += this.echeancesDu(ajouterJours(this.sem, i)).length;
     const k = iso(this.sem);
-    const crit = (this.donnees.critiques || []).includes(k), rel = (this.donnees.relaches || []).includes(k);
+    const crit = (this.ses.critiques || []).includes(k), rel = (this.ses.relaches || []).includes(k);
     this.lblCrit.textContent = rel ? "☀ Semaine de relâche" : crit ? "⚠ Période critique" : "";
     this.lblCrit.style.color = rel ? "var(--accent)" : "var(--critique)";
     const m = [this.semaineModifiee() ? "Modifiée" : "Semaine type"];
@@ -356,7 +409,7 @@ class App {
     this.chips.etude[1].textContent = fmtDuree(etude);
     this.chips.opt[1].textContent = "+" + fmtDuree(opt);
     this.chips.opt[0].hidden = !opt;
-    const rel = (this.donnees.relaches || []).includes(iso(this.sem));
+    const rel = (this.ses.relaches || []).includes(iso(this.sem));
     this.lblSemaine.textContent = `SEMAINE ${this.idxSem() + 1} SUR ${SESSION_SEMAINES}  ·  ${plageSemaine(this.sem).toUpperCase()}  ·  ${rel ? "RELÂCHE" : "TEMPS COMPLET"}`;
     // barre de la session
     const b = this.barreSession;
@@ -364,7 +417,7 @@ class App {
     const debut = SESSION_DEBUT, fin = ajouterJours(lundiSemaine(SESSION_SEMAINES - 1), 6);
     const total = joursEntre(debut, fin) + 1;
     const frac = Math.max(0, Math.min(1, (joursEntre(debut, aujourdhui()) + 1) / total));
-    for (const l of this.donnees.critiques || []) {
+    for (const l of this.ses.critiques || []) {
       const d = isoDate(l);
       if (d) b.append(el("span.crit", {style: {left: (joursEntre(debut, d) / total * 100) + "%", width: (7 / total * 100) + "%"}}));
     }
@@ -384,10 +437,13 @@ class App {
   /* ---------- horloge du bandeau */
   ticSeconde() {
     if (!this.interfacePrete) return;
+    if (this.page === "accueil") this.ecrans.accueil.tic();
     this.majHorloge(false);
   }
   ticMinute() {
     if (!this.interfacePrete || (this.drag && this.drag.moved) || Pile.some(p => p.estModal)) return;
+    if (this.page === "accueil") this.ecrans.accueil.rafraichir();
+    if (this.page !== "horaire") return;
     this.dessinerStats(); this.dessinerGrille(); this.dessinerEcheances(); this.dessinerPanneauJour();
   }
   majHorloge(force) {
@@ -417,7 +473,7 @@ class App {
       ens = (ens ? ens + "   ·   " : "") + `Ensuite : ${nom(prochain)} à ${fmt(prochain.debut)} (dans ${dans < 60 ? dans + " min" : fmtDuree(dans)})`;
     } else if (!enCours) ens = "Plus rien de prévu aujourd'hui";
     const a = aujourdhui();
-    const exams = this.donnees.echeances.filter(e => !e.fait && ["intra", "final"].includes(e.type) && isoDate(e.date) && isoDate(e.date) >= a)
+    const exams = this.ses.echeances.filter(e => !e.fait && ["intra", "final"].includes(e.type) && isoDate(e.date) && isoDate(e.date) >= a)
       .sort((x, y) => x.date.localeCompare(y.date));
     this.lblEnsuite.textContent = ens;
     if (exams.length) {
@@ -434,7 +490,7 @@ class App {
   clavier(e) {
     const top = Pile[Pile.length - 1];
     if (top) { if (top.touche(e)) e.preventDefault(); return; }
-    if (this.saisieActive() || !this.interfacePrete) return;
+    if (this.saisieActive() || !this.interfacePrete || this.page !== "horaire") return;
     const mod = e.ctrlKey || e.metaKey;
     const k = e.key.toLowerCase();
     if (mod) {
@@ -475,6 +531,7 @@ class App {
         for (const k of REG_LOCAUX) if (k in this.donnees.reglages) loc[k] = this.donnees.reglages[k];
         st.reglages = Object.assign({}, st.reglages, loc);
         this.donnees = st;
+        activerHoraire(metaHoraire(st, st.reglages.horaire || "aut26"));
         appliquerCategories(st.categories);
         appliquerReglages(Object.assign({}, DEFAUT_REGLAGES, st.reglages));
         this.sauver();

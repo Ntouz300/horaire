@@ -8,7 +8,7 @@ function el(tag, attrs, ...enfants) {
   if (attrs) {
     for (const [k, v] of Object.entries(attrs)) {
       if (v === undefined || v === null || v === false) continue;
-      if (k === "style" && typeof v === "object") Object.assign(e.style, v);
+      if (k === "style" && typeof v === "object") { for (const [a, b] of Object.entries(v)) { if (a.startsWith("--")) e.style.setProperty(a, b); else e.style[a] = b; } }
       else if (k.startsWith("on") && typeof v === "function") e.addEventListener(k.slice(2), v);
       else if (k === "html") e.innerHTML = v;
       else if (k === "texte") e.textContent = v;

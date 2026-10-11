@@ -23,7 +23,7 @@ Object.assign(App.prototype, {
     const aFaire = this.tachesVue().filter(t => !t.fait);
     if (!aFaire.length) { informer("Reporter les tâches", "Aucune tâche à reporter cette semaine."); return; }
     const k = iso(ajouterJours(this.sem, 7));
-    const s = this.donnees.semaines[k] = this.donnees.semaines[k] || {};
+    const s = this.ses.semaines[k] = this.ses.semaines[k] || {};
     s.taches = (s.taches || []).concat(aFaire);
     const lst = this.tachesEdit();
     const gard = lst.filter(t => t.fait);
@@ -71,7 +71,7 @@ Object.assign(App.prototype, {
     for (const [k, b] of Object.entries(this.filtresEch)) b.className = "btn petit " + (k === this.fEch ? "tab_on" : "tab");
     const lst = this.listeEch;
     lst.innerHTML = "";
-    const a = aujourdhui(), toutes = this.donnees.echeances;
+    const a = aujourdhui(), toutes = this.ses.echeances;
     const cle = (e) => (e.date || "9999-99-99") + (e.heure || "");
     const aVenir = toutes.filter(e => !e.fait).sort((x, y) => cle(x).localeCompare(cle(y)));
     const faites = toutes.filter(e => e.fait).sort((x, y) => cle(y).localeCompare(cle(x)));
@@ -99,7 +99,7 @@ Object.assign(App.prototype, {
   dessinerResultats(p) {
     p.append(el("div.petit.muted", {texte: "Entre ta note (en %) dans une échéance pour voir ta moyenne pondérée par cours.", style: {margin: "4px 0 8px"}}));
     for (const k of COURS_KEYS) {
-      const evals = this.donnees.echeances.filter(e => e.cours === k && num(e.poids));
+      const evals = this.ses.echeances.filter(e => e.cours === k && num(e.poids));
       if (!evals.length) continue;
       const col = couleur(k);
       const total = evals.reduce((s, e) => s + num(e.poids), 0);
@@ -191,7 +191,7 @@ Object.assign(App.prototype, {
     const blocs = this.blocsVue().filter(b => b.jour === jour && b.statut !== "saute").sort((x, y) => toMin(x.debut) - toMin(y.debut));
     const titre = (t, col) => p.append(el("div.etiquette.groupe", {texte: t.toUpperCase(), style: {color: col || ""}}));
     p.append(el("h3", {texte: `${JOURS[jourSemaine(d)]} ${d.getDate()} ${MOIS[d.getMonth()]}`}),
-      el("div.petit.muted", {texte: quand(d).replace(/^./, c => c.toUpperCase()) + ((this.donnees.critiques || []).includes(iso(this.sem)) ? "  ·  période critique" : "")}));
+      el("div.petit.muted", {texte: quand(d).replace(/^./, c => c.toUpperCase()) + ((this.ses.critiques || []).includes(iso(this.sem)) ? "  ·  période critique" : "")}));
     const tot = {cours: 0, etude: 0, travail: 0, autre: 0};
     for (const b of blocs) {
       const m = Math.max(0, toMin(b.fin) - toMin(b.debut)), cat = CATS[b.cat];
@@ -225,7 +225,7 @@ Object.assign(App.prototype, {
         el("span", {texte: `${fmt(hm(x))} – ${fmt(hm(y))}`}), el("span.mono.muted", {texte: fmtDuree(y - x)})));
     }
     const evs = this.echeancesDu(d);
-    const proch = this.donnees.echeances.filter(e => !e.fait && isoDate(e.date) && joursEntre(d, isoDate(e.date)) > 0 && joursEntre(d, isoDate(e.date)) <= 7).sort((x, y) => x.date.localeCompare(y.date));
+    const proch = this.ses.echeances.filter(e => !e.fait && isoDate(e.date) && joursEntre(d, isoDate(e.date)) > 0 && joursEntre(d, isoDate(e.date)) <= 7).sort((x, y) => x.date.localeCompare(y.date));
     titre("Échéances du jour", evs.length ? "var(--danger)" : null);
     if (!evs.length) p.append(el("div.petit.muted", {texte: "Aucune."}));
     for (const e of evs) p.append(this.ligneEch(e));

@@ -111,13 +111,13 @@ class EcheanceEditeur extends Modal {
     const data = {resultat: res, quoi: this.quoi.value.trim() || "Échéance", type: this.type.value, cours: this.cours.value, date,
       heure: heure ? parseTime(heure) : "", poids, note: this.note.value.replace(/\n+$/, ""), fait: res ? true : this.fait.valeur()};
     if (this.e) Object.assign(this.e, data);
-    else this.app.donnees.echeances.push(Object.assign({id: newId()}, data));
+    else this.app.ses.echeances.push(Object.assign({id: newId()}, data));
     this.fermer();
     this.app.changement();
   }
   async supprimer() {
     if (!await dialogue("Supprimer l'échéance", `Supprimer « ${this.e.quoi || ""} » ?`, [["Annuler", false, "ghost"], ["Supprimer", true, "danger"]])) return;
-    const l = this.app.donnees.echeances, i = l.indexOf(this.e);
+    const l = this.app.ses.echeances, i = l.indexOf(this.e);
     if (i >= 0) l.splice(i, 1);
     this.fermer();
     this.app.changement();
@@ -215,7 +215,7 @@ class OptionsSemaine extends Modal {
     const modif = app.semaineModifiee();
     super("Options de la semaine", `Semaine du ${plageSemaine(app.sem)}  ·  ${modif ? "modifiée" : "semaine type"}`);
     this.app = app;
-    const rel = (app.donnees.relaches || []).includes(iso(app.sem));
+    const rel = (app.ses.relaches || []).includes(iso(app.sem));
     const actions = [
       ["Copier vers la semaine suivante", "Remplace l'horaire de la semaine suivante par celui-ci.", () => app.actionCopierSuivante(), "ghost"],
       ["Copier vers toutes les semaines suivantes", "Remplace l'horaire de toutes les semaines qui restent dans la session.", () => app.actionCopierToutes(), "ghost"],
@@ -223,7 +223,7 @@ class OptionsSemaine extends Modal {
       rel ? ["Retirer le statut « relâche »", "Enlève seulement l'étiquette ; les blocs ne changent pas.", () => app.actionRelache(), "ghost"]
         : ["Marquer comme semaine de relâche", "Retire les cours de cette semaine (le reste est gardé).", () => app.actionRelache(), "ghost"],
     ];
-    const crit = (app.donnees.critiques || []).includes(iso(app.sem));
+    const crit = (app.ses.critiques || []).includes(iso(app.sem));
     actions.push([crit ? "Retirer « période critique »" : "Marquer comme période critique", "Affiche un avertissement sur cette semaine.", () => app.actionCritique(), "ghost"]);
     if (modif) actions.push(["Revenir à la semaine type", "Efface les changements de cette semaine seulement.", () => app.actionRevenir(), "danger"]);
     for (const [t, d, fn, st] of actions) this.carte.append(el("div.option", null, bouton(t, () => { this.fermer(); setTimeout(fn, 60); }, st), el("div.petit.muted", {texte: d})));
@@ -235,10 +235,10 @@ Object.assign(App.prototype, {
   copiePropre() { const s = clone(this.blocsVue()); s.forEach(b => { b.fait = false; }); return s; },
   ecraser(cibles) {
     const src = this.copiePropre();
-    for (const l of cibles) { const k = iso(l); this.donnees.semaines[k] = this.donnees.semaines[k] || {}; this.donnees.semaines[k].blocs = clone(src); }
+    for (const l of cibles) { const k = iso(l); this.ses.semaines[k] = this.ses.semaines[k] || {}; this.ses.semaines[k].blocs = clone(src); }
     this.changement();
   },
-  nbModifiees(c) { return c.filter(l => (this.donnees.semaines[iso(l)] || {}).blocs).length; },
+  nbModifiees(c) { return c.filter(l => (this.ses.semaines[iso(l)] || {}).blocs).length; },
   async actionCopierSuivante() {
     if (this.idxSem() >= SESSION_SEMAINES - 1) return informer("Copier la semaine", "C'est la dernière semaine de la session.");
     const c = ajouterJours(this.sem, 7);
@@ -257,10 +257,10 @@ Object.assign(App.prototype, {
   },
   async actionModele() {
     if (await dialogue("Semaine type", "Utiliser l'horaire de cette semaine comme semaine type ?\nLes semaines jamais modifiées prendront cet horaire. Les semaines déjà modifiées ne changent pas.",
-      [["Annuler", false, "ghost"], ["Utiliser", true, "primary"]])) { this.donnees.modele = this.copiePropre(); this.changement(); }
+      [["Annuler", false, "ghost"], ["Utiliser", true, "primary"]])) { this.ses.modele = this.copiePropre(); this.changement(); }
   },
   async actionRelache() {
-    const k = iso(this.sem), rel = this.donnees.relaches = this.donnees.relaches || [];
+    const k = iso(this.sem), rel = this.ses.relaches = this.ses.relaches || [];
     if (rel.includes(k)) rel.splice(rel.indexOf(k), 1);
     else {
       if (!await dialogue("Semaine de relâche", `Retirer les cours de la semaine du ${plageSemaine(this.sem)} ?\nLe travail, l'étude et le reste sont gardés (les autres semaines ne changent pas).`,
@@ -272,7 +272,7 @@ Object.assign(App.prototype, {
     this.sauver(); this.remplirSemaines(); this.dessinerTout();
   },
   actionCritique() {
-    const k = iso(this.sem), c = this.donnees.critiques = this.donnees.critiques || [];
+    const k = iso(this.sem), c = this.ses.critiques = this.ses.critiques || [];
     if (c.includes(k)) c.splice(c.indexOf(k), 1); else c.push(k);
     this.sauver(); this.remplirSemaines(); this.dessinerTout();
   },
@@ -280,7 +280,7 @@ Object.assign(App.prototype, {
     if (!await dialogue("Revenir à la semaine type", `Effacer les changements de la semaine du ${plageSemaine(this.sem)} et revenir à la semaine type ?`,
       [["Annuler", false, "ghost"], ["Effacer", true, "danger"]])) return;
     const s = this.entreeSemaine();
-    if (s) { delete s.blocs; if (!Object.keys(s).length) delete this.donnees.semaines[iso(this.sem)]; }
+    if (s) { delete s.blocs; if (!Object.keys(s).length) delete this.ses.semaines[iso(this.sem)]; }
     this.changement();
   },
   categoriesChangees() {
@@ -354,9 +354,13 @@ class Matieres extends Modal {
   }
   usage(cle) {
     const d = this.app.donnees;
-    let nb = d.modele.filter(b => b.cat === cle).length;
-    for (const s of Object.values(d.semaines)) nb += (s.blocs || []).filter(b => b.cat === cle).length;
-    return [nb, d.echeances.filter(e => e.cours === cle).length, d.notes.filter(n => n.cours === cle).length];
+    let nb = 0, ne = 0;
+    for (const ses of toutesSessions(d)) {
+      nb += ses.modele.filter(b => b.cat === cle).length;
+      for (const s of Object.values(ses.semaines)) nb += (s.blocs || []).filter(b => b.cat === cle).length;
+      ne += ses.echeances.filter(e => e.cours === cle).length;
+    }
+    return [nb, ne, d.notes.filter(n => n.cours === cle).length];
   }
   dessiner() {
     appliquerCategories(this.app.donnees.categories);
@@ -379,8 +383,10 @@ class Matieres extends Modal {
     if (m.length) msg += "\n" + m.join(", ") + " l'utilisent : ils passeront dans « Perso ».";
     if (!await dialogue("Supprimer la matière", msg, [["Annuler", false, "ghost"], ["Supprimer", true, "danger"]])) return;
     const d = this.app.donnees;
-    for (const lst of [d.modele].concat(Object.values(d.semaines).map(s => s.blocs || []))) for (const x of lst) if (x.cat === c.cle) x.cat = "perso";
-    for (const x of d.echeances) if (x.cours === c.cle) x.cours = "perso";
+    for (const ses of toutesSessions(d)) {
+      for (const lst of [ses.modele].concat(Object.values(ses.semaines).map(s => s.blocs || []))) for (const x of lst) if (x.cat === c.cle) x.cat = "perso";
+      for (const x of ses.echeances) if (x.cours === c.cle) x.cours = "perso";
+    }
     for (const x of d.notes) if (x.cours === c.cle) x.cours = "";
     d.categories = d.categories.filter(x => x !== c);
     this.ok();
@@ -486,6 +492,8 @@ class Reglages extends Modal {
       this.cases[cle] = caseACocher(this.d[cle] !== false, null, t);
       dr.append(this.cases[cle]);
     }
+    this.vPrenom = entree(this.d.prenom || "", {placeholder: "Ton prénom", maxlength: "30"});
+    dr.append(etiquette("Ton prénom (page d'accueil)"), this.vPrenom);
     dr.append(etiquette("Synchronisation avec le PC"), el("div.rapides", null, app.lblSync ? el("span.mono.petit", {texte: app.lblSync.textContent, style: {color: app.lblSync.style.color}}) : null,
       petit("Détails…", () => app.ouvrirSynchro())));
     this.barre([bouton("Tout réinitialiser", () => { this.d = clone(DEFAUT_REGLAGES); this.hd.value = "7"; this.hf.value = "22"; for (const [k, c] of Object.entries(this.cases)) { c.classList.toggle("on", DEFAUT_REGLAGES[k] !== false); } this.maj(); }, "danger")],
@@ -523,6 +531,7 @@ class Reglages extends Modal {
     const hd = parseInt(this.hd.value), hf = parseInt(this.hf.value);
     if (hf < hd + 6) return this.erreur("La grille doit couvrir au moins 6 heures.");
     this.d.h_debut = hd; this.d.h_fin = hf;
+    this.d.prenom = this.vPrenom.value.trim().slice(0, 30);
     for (const [k, c] of Object.entries(this.cases)) this.d[k] = c.valeur();
     const reg = clone(this.d);
     this.fermer();

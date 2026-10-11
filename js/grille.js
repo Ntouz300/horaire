@@ -403,15 +403,15 @@ Object.assign(App.prototype, {
 
   /* ---------- annuler, presse-papiers */
   snapBlocs() {
-    const k = iso(this.sem), s = this.donnees.semaines[k];
+    const k = iso(this.sem), s = this.ses.semaines[k];
     this.undo.push([k, s && s.blocs ? clone(s.blocs) : null]);
     if (this.undo.length > 40) this.undo.splice(0, this.undo.length - 40);
   },
   annuler() {
     if (!this.undo.length) { Notifs.bulle("Rien à annuler"); return; }
     const [k, prev] = this.undo.pop();
-    const s = this.donnees.semaines[k] = this.donnees.semaines[k] || {};
-    if (prev === null) { delete s.blocs; if (!Object.keys(s).length) delete this.donnees.semaines[k]; }
+    const s = this.ses.semaines[k] = this.ses.semaines[k] || {};
+    if (prev === null) { delete s.blocs; if (!Object.keys(s).length) delete this.ses.semaines[k]; }
     else s.blocs = prev;
     this.sem = isoDate(k) || this.sem;
     this.selId = null;

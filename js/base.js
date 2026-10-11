@@ -2,9 +2,11 @@
    Même modèle de données que l'application PC (horaire_automne_2026.json, version 4). */
 "use strict";
 
-const APP_TITLE = "Horaire Automne 2026";
-const SESSION_DEBUT = new Date(2026, 7, 31);   // lundi de la semaine 1
-const SESSION_SEMAINES = 17;
+let APP_TITLE = "Horaire Automne 2026";
+let SESSION_DEBUT = new Date(2026, 7, 31);   // lundi de la semaine 1 de l'horaire actif (voir activerHoraire)
+let SESSION_SEMAINES = 17;
+const HORAIRE_PRINCIPAL = {id: "aut26", nom: "Automne 2026", debut: "2026-08-31", nb: 17};
+let HID = "aut26";                             // horaire actif
 const JOURS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 const MOIS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
 
@@ -38,8 +40,9 @@ const FORMES = [["Carré", 0.0], ["Léger", 0.55], ["Arrondi", 1.0], ["Très arr
 const TAILLES = [["Petit", 90], ["Normal", 100], ["Grand", 115], ["Très grand", 130]];
 const ACCENTS = ["#5b9bff", "#3cc4c9", "#4fd1a1", "#f0a541", "#ff7a8d", "#a78bfa", "#e879f9", "#f2d35b"];
 const DEFAUT_REGLAGES = {theme: "nuit", accent: "", forme: 2, texte: 100, h_debut: 7, h_fin: 22, notes_blocs: true,
-  plein_ecran: true, horloge: true, secondes: true, son: true, rappel_cours: 0};
-const REG_LOCAUX = ["vue", "plein_ecran", "texte"];
+  plein_ecran: true, horloge: true, secondes: true, son: true, rappel_cours: 0,
+  prenom: "Antoine", objectif: 70};
+const REG_LOCAUX = ["vue", "plein_ecran", "texte", "horaire", "page"];
 const CATS_BASE = {
   info: ["Informatique (6GEN248)", "Informatique", true], graph: ["Sciences graphiques (6DDG100)", "Sc. graphiques", true],
   meca: ["Mécanique (6GMC108)", "Mécanique", true], ethique: ["Ingénierie et éthique (6GIN275)", "Éthique", true],
@@ -198,6 +201,50 @@ function canon(v) {
   return JSON.stringify(v === undefined ? null : v);
 }
 
+/* ---------- plusieurs horaires (sessions) */
+function sessionVide() { return {modele: [], semaines: {}, echeances: [], critiques: [], relaches: [], imports: []}; }
+function listeHoraires(d) {
+  const hs = [], vus = new Set();
+  for (const h of (d && Array.isArray(d.horaires) ? d.horaires : [])) {
+    if (!h || typeof h !== "object" || !h.id || vus.has(h.id) || !isoDate(h.debut)) continue;
+    vus.add(h.id);
+    let nb = parseInt(h.nb); if (isNaN(nb)) nb = 15;
+    hs.push({id: String(h.id), nom: String(h.nom || "Horaire"), debut: h.debut, nb: Math.max(1, Math.min(60, nb))});
+  }
+  if (!vus.has("aut26")) hs.unshift(Object.assign({}, HORAIRE_PRINCIPAL));
+  return hs;
+}
+function metaHoraire(d, id) { const hs = listeHoraires(d); return hs.find(h => h.id === id) || hs[0]; }
+function donneesHoraire(d, id) {
+  if (id === "aut26") return d;
+  let s = d["h_" + id];
+  if (!s || typeof s !== "object") s = d["h_" + id] = sessionVide();
+  const v = sessionVide();
+  for (const k of Object.keys(v)) if (Array.isArray(v[k]) ? !Array.isArray(s[k]) : (!s[k] || typeof s[k] !== "object" || Array.isArray(s[k]))) s[k] = v[k];
+  return s;
+}
+function toutesSessions(d) { return [d].concat(Object.keys(d).filter(k => k.startsWith("h_") && d[k] && typeof d[k] === "object").map(k => d[k])); }
+function finHoraire(h) { return ajouterJours(isoDate(h.debut), 7 * (h.nb - 1) + 6); }
+function activerHoraire(h) {
+  HID = h.id;
+  SESSION_DEBUT = lundiDe(isoDate(h.debut));
+  SESSION_SEMAINES = h.nb;
+  APP_TITLE = "Horaire " + h.nom;
+  document.title = APP_TITLE;
+}
+function horairePour(d, jour, prefere) {
+  const hs = listeHoraires(d).sort((a, b) => (a.id === prefere ? 0 : 1) - (b.id === prefere ? 0 : 1));
+  return hs.find(h => isoDate(h.debut) <= jour && jour <= finHoraire(h)) || null;
+}
+function normaliserHoraire(v) {
+  const out = sessionVide();
+  if (!v || typeof v !== "object") return out;
+  for (const k of ["modele", "echeances", "critiques", "relaches", "imports"]) if (Array.isArray(v[k])) out[k] = v[k];
+  if (v.semaines && typeof v.semaines === "object" && !Array.isArray(v.semaines)) out.semaines = v.semaines;
+  for (const e of out.echeances) if (e && e.resultat === undefined) e.resultat = "";
+  return out;
+}
+
 /* ---------- données */
 function normaliser(d) {
   d = d && typeof d === "object" ? d : {};
@@ -209,6 +256,12 @@ function normaliser(d) {
   if (!Array.isArray(out.categories) || !out.categories.length) out.categories = categoriesDefaut();
   if (!out.reglages || typeof out.reglages !== "object") out.reglages = {};
   if (!out.pomodoro || typeof out.pomodoro !== "object") out.pomodoro = {travail: 25, pause: 5, longue: 15, cycles: 4};
+  out.horaires = listeHoraires(out);
+  const ids = new Set(out.horaires.map(h => h.id));
+  for (const k of Object.keys(out)) {
+    if (!k.startsWith("h_")) continue;
+    if (ids.has(k.slice(2))) out[k] = normaliserHoraire(out[k]); else delete out[k];
+  }
   return out;
 }
 
@@ -221,12 +274,28 @@ function sectionsDe(d) {
       const r = {};
       for (const [a, b] of Object.entries(v || {})) if (!REG_LOCAUX.includes(a)) r[a] = b;
       out[k] = r;
+    } else if (k.startsWith("h_") && v && typeof v === "object") {
+      // autre horaire : une section pour l'horaire + une par semaine modifiée
+      const r = {};
+      for (const [a, b] of Object.entries(v)) if (a !== "semaines") r[a] = b;
+      out[k] = r;
+      for (const [l, sm] of Object.entries(v.semaines || {})) if (sm && Object.keys(sm).length) out["hs_" + k.slice(2) + "_" + l] = sm;
     } else out[k] = v;
   }
   return out;
 }
 function poserSection(d, nom, valeur) {
-  if (nom.startsWith("s_")) {
+  if (nom.startsWith("hs_")) {
+    const i = nom.lastIndexOf("_"), id = nom.slice(3, i), l = nom.slice(i + 1);
+    let ses = d["h_" + id];
+    if (!ses || typeof ses !== "object") { if (valeur === null) return; ses = d["h_" + id] = sessionVide(); }
+    ses.semaines = ses.semaines || {};
+    if (valeur === null) delete ses.semaines[l]; else ses.semaines[l] = valeur;
+  } else if (nom.startsWith("h_")) {
+    if (valeur === null) { delete d[nom]; return; }
+    const ancien = d[nom] && typeof d[nom] === "object" ? d[nom] : {};
+    d[nom] = Object.assign(sessionVide(), valeur, {semaines: ancien.semaines || {}});
+  } else if (nom.startsWith("s_")) {
     const l = nom.slice(2);
     if (valeur === null) delete d.semaines[l]; else d.semaines[l] = valeur;
   } else if (nom === "reglages") {
