@@ -720,6 +720,8 @@ class EditeurCahier {
   liberer(f) { if (!f.alloue) return; f.cv.width = 0; f.cv.height = 0; f.alloue = false; f.aDessiner = true; }
   redimensionner() {
     const W = this.largeurBase() * this.zoom;
+    // la page est centrée une seule fois à l'ouverture ; ensuite on la pousse à la main où on veut, sans recentrage
+    if (!this._centre && this.pagesZone.scrollWidth > this.pagesZone.clientWidth) { this.pagesZone.scrollLeft = (this.pagesZone.scrollWidth - this.pagesZone.clientWidth) / 2; this._centre = true; }
     for (const f of this.feuilles.values()) if (Math.abs(f.k * PAGE_L - W) > 1) this.dimensionner(f, W);
     for (const f of this.feuilles.values()) if (this.visible(f) && f.aDessiner) this.peindre(f.page.id);
   }

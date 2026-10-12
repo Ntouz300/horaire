@@ -625,7 +625,7 @@ input[type="time"].saisie, input[type="date"].saisie { min-height: 42px; }
 .mini.on { border-color: var(--accent); color: var(--ink); }
 .cah-pages { flex: 1; min-width: 0; overflow: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
 /* la piste s'élargit avec le zoom (défilement horizontal) et reste centrée quand elle est plus étroite */
-.cah-piste { display: flex; flex-direction: column; align-items: center; gap: 22px; padding: 10px 46px 60px 14px; width: max-content; min-width: 100%; box-sizing: border-box; }
+.cah-piste { display: flex; flex-direction: column; align-items: center; gap: 22px; padding: 10px calc(46px + 45%) 60px calc(14px + 45%); width: max-content; min-width: 100%; box-sizing: border-box; }
 .feuille { position: relative; flex: none; box-shadow: 0 8px 26px rgba(0, 0, 0, .3), 0 0 0 1px var(--rule); border-radius: 3px; }
 .cah-cv { display: block; border-radius: 3px; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .feuille-num { position: absolute; right: -32px; bottom: 0; font: 11px var(--f-mono); color: var(--muted); }
