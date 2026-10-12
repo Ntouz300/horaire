@@ -21,6 +21,10 @@ class App {
     const a = aujourdhui();
     this.jourVue = memeJour(this.sem, lundiDe(a)) ? jourSemaine(a) : 0;
     this.sync = new Synchro(this);
+    Stock.avantVider.push(() => {                       // l'appli passe en arrière-plan ou se ferme : rien ne doit rester en attente
+      if (this.ecrans && this.ecrans.notes) this.ecrans.notes.enregistrer();
+      this.enregistrerLocal();
+    });
     this.outils = new Outils(this);
     this.lireLien();
     if (this.donnees) this.demarrerInterface();
@@ -531,6 +535,8 @@ class App {
         const loc = {};
         for (const k of REG_LOCAUX) if (k in this.donnees.reglages) loc[k] = this.donnees.reglages[k];
         st.reglages = Object.assign({}, st.reglages, loc);
+        const gardees = new Set((st.notes || []).map(n => n.id));
+        for (const n of this.donnees.notes || []) if (!gardees.has(n.id)) this.sync.marquerSuppression(n.id);     // remplacement voulu
         this.donnees = st;
         activerHoraire(metaHoraire(st, st.reglages.horaire || "aut26"));
         appliquerCategories(st.categories);

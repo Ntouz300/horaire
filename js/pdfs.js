@@ -109,10 +109,17 @@ const Fichiers = {
     const url = this.urlDistant(id);
     if (url) fetch(url, {method: "DELETE"}).catch(() => {});
   },
-  /* ménage : PDF locaux qui ne sont plus utilisés */
+  /* ménage : PDF locaux qui ne sont plus utilisés par aucun document. Il ne supprime jamais rien tant que les données ne sont pas
+     chargées et fiables (stockage dégradé, premier chargement, liste vide) : sinon une lecture ratée au démarrage viderait les PDF
+     de l'appareil et les pages deviendraient blanches. */
   async menage() {
-    const connus = new Set(((app.donnees && app.donnees.fichiers) || []).map(f => f.id));
-    for (const id of await this.idsLocaux()) if (!connus.has(id)) this.effacerLocal(id);
+    const d = window.app && app.donnees;
+    if (!d || !app.interfacePrete || Stock.degrade || app.premierChargement) return;
+    const utilises = new Set((d.fichiers || []).map(f => f.id));
+    for (const n of d.notes || []) for (const p of n.pages || []) if (p.pdf) utilises.add(p.pdf[0]);
+    const locaux = await this.idsLocaux();
+    if (!utilises.size && locaux.length) { Stock.journal("ménage des PDF ignoré", "aucun fichier connu alors que " + locaux.length + " sont sur l'appareil"); return; }
+    for (const id of locaux) if (!utilises.has(id)) this.effacerLocal(id);
   },
 };
 setInterval(() => { if (window.app && app.sync && app.sync.configuree() && Fichiers.aEnvoyer().length) Fichiers.relancer(); }, 30000);
@@ -252,8 +259,9 @@ function dossierNomme(d, nom, couleur) {
   return x.id;
 }
 
-/* un PDF → un cahier dont chaque page a le PDF en fond */
-async function importerPdf(app, u8, nom, dossier, couverture) {
+/* un PDF : copié dans les données de l'appli (reste lisible même si l'original disparaît), enregistré dans la liste des fichiers
+   et marqué à envoyer à l'autre appareil. Renvoie son identifiant et la taille de chaque page. */
+async function preparerPdf(app, u8, nom) {
   const m = await pdfjs();
   const id = await empreinte(u8);
   const tache = m.getDocument(optionsPdf(u8));
@@ -264,23 +272,142 @@ async function importerPdf(app, u8, nom, dossier, couverture) {
   } finally { tache.destroy(); }
   const d = app.donnees;
   await Fichiers.ecrireLocal(id, u8);
+  if (!(await Fichiers.lireLocal(id))) throw new Error("copie impossible dans la mémoire de l'iPad (espace plein ?)");
   if (!d.fichiers.some(f => f.id === id)) {
     d.fichiers.push({id, nom: nomPropre(nom), taille: u8.length, n: Math.ceil(Math.ceil(u8.length / 3) * 4 / MORCEAU_PDF), pages: tailles, ajout: nowIsoMinutes()});
     Fichiers.marquer(id, false);
   }
+  return {id, tailles};
+}
+function pagesPdf(id, tailles) {
+  return tailles.map(([w, h], i) => ({id: newId(), f: "pdf", h: Math.round(PAGE_L * h / w), pdf: [id, i], traits: [], textes: []}));
+}
+/* un PDF → un cahier dont chaque page a le PDF en fond */
+async function importerPdf(app, u8, nom, dossier, couverture) {
+  const {id, tailles} = await preparerPdf(app, u8, nom);
   const n = normaliserNote({id: newId(), type: "cahier", titre: nomPropre(nom).replace(/\.pdf$/i, ""), dossier: dossier || "", fond: "blanc", papier: "blanc",
-    couverture: couverture || "", fichier: id, maj: nowIsoMinutes(),
-    pages: tailles.map(([w, h], i) => ({id: newId(), f: "pdf", h: Math.round(PAGE_L * h / w), pdf: [id, i], traits: [], textes: []}))});
-  d.notes.unshift(n);
+    couverture: couverture || "", fichier: id, maj: nowIsoMinutes(), pages: pagesPdf(id, tailles)});
+  app.donnees.notes.unshift(n);
   return n;
 }
 
+/* ---------- import de documents : PDF, images (JPG, PNG) et texte (TXT), dans un dossier ou dans un fichier */
+const TAILLE_MAX_IMPORT = 20 * 1024 * 1024;        // taille maximale d'un document importé (au-delà, la synchro deviendrait trop lente)
+const FORMATS_DOCUMENT = ".pdf,.txt,.jpg,.jpeg,.png,application/pdf,text/plain,image/jpeg,image/png";
+function moTexte(o) { return (Math.round(o / 104857.6) / 10).toString().replace(".", ",") + " Mo"; }
+function genreDocument(nom, u8) {
+  if (u8 && u8.length > 3) {
+    if (u8[0] === 0x25 && u8[1] === 0x50 && u8[2] === 0x44 && u8[3] === 0x46) return "pdf";
+    if (u8[0] === 0xFF && u8[1] === 0xD8) return "image";
+    if (u8[0] === 0x89 && u8[1] === 0x50 && u8[2] === 0x4E) return "image";
+  }
+  if (/\.pdf$/i.test(nom)) return "pdf";
+  if (/\.(jpe?g|png)$/i.test(nom)) return "image";
+  if (/\.txt$/i.test(nom)) return "texte";
+  return "";
+}
+function messageFormat(nom) {
+  if (/\.docx?$/i.test(nom)) return nom + " : les documents Word ne sont pas pris en charge (exporte-les d'abord en PDF).";
+  return nom + " : format non pris en charge (PDF, JPG, PNG ou TXT).";
+}
+/* une image → un PDF d'une page (la photo est redressée selon son orientation et réduite à 2400 px au plus) */
+async function imageEnPdf(u8) {
+  const {PDFDocument} = await pdfLib();
+  const doc = await PDFDocument.create();
+  let img;
+  if (u8[0] === 0x89 && u8[1] === 0x50) img = await doc.embedPng(u8);
+  else {
+    const bmp = await createImageBitmap(new Blob([u8]));
+    const e = Math.min(1, 2400 / Math.max(bmp.width, bmp.height)), cv = document.createElement("canvas");
+    cv.width = Math.max(1, Math.round(bmp.width * e)); cv.height = Math.max(1, Math.round(bmp.height * e));
+    const c = cv.getContext("2d"); c.fillStyle = "#fff"; c.fillRect(0, 0, cv.width, cv.height); c.drawImage(bmp, 0, 0, cv.width, cv.height);
+    if (bmp.close) bmp.close();
+    const blob = await new Promise(r => cv.toBlob(r, "image/jpeg", .9));
+    if (!blob) throw new Error("image illisible");
+    img = await doc.embedJpg(new Uint8Array(await blob.arrayBuffer()));
+  }
+  const L = 595.28, h = Math.max(120, Math.min(3000, L * img.height / img.width));
+  doc.addPage([L, h]).drawImage(img, {x: 0, y: 0, width: L, height: h});
+  return new Uint8Array(await doc.save());
+}
+/* un texte → une ou plusieurs pages avec des zones de texte */
+function pagesTexte(texte) {
+  const pages = [], bloc = {s: 28, w: 920}, max = PAGE_H - 120;
+  let cur = [], haut = 0;
+  const vider = () => { if (cur.length) pages.push({id: newId(), f: "blanc", h: PAGE_H, traits: [], textes: [{id: newId(), x: 40, y: 50, w: bloc.w, t: cur.join("\n"), c: "", s: bloc.s}]}); cur = []; haut = 0; };
+  for (const ligne of String(texte).replace(/\r\n?/g, "\n").split("\n")) {
+    const h = hauteurTexte({t: ligne || " ", s: bloc.s, w: bloc.w});
+    if (haut + h > max && cur.length) vider();
+    cur.push(ligne); haut += h;
+  }
+  vider();
+  return pages.length ? pages : [{id: newId(), f: "blanc", h: PAGE_H, traits: [], textes: []}];
+}
+async function lireDocument(f) {
+  try { return new Uint8Array(await f.arrayBuffer()); }
+  catch (e) { throw new Error("lecture impossible (permission refusée ou fichier déplacé)"); }
+}
+/* importe des documents (plusieurs à la fois) : cible = {dossier: id} → nouveaux documents dans ce dossier ; cible = {note: n} → pages ajoutées à ce fichier */
+function messageErreurImport(e) {
+  const m = String(e && e.message || e);
+  if (/Invalid PDF|Missing PDF|InvalidPDF|PDF header|XRef|Unexpected server response/i.test(m) || (e && e.name === "InvalidPDFException")) return "fichier PDF illisible ou abîmé.";
+  if (/password/i.test(m)) return "PDF protégé par un mot de passe.";
+  if (/decode|image/i.test(m)) return "image illisible.";
+  return m;
+}
+async function importerDocuments(app, fichiers, progres, cible) {
+  cible = cible || {};
+  const bilan = {notes: 0, pages: 0, erreurs: []};
+  const liste = Array.from(fichiers);
+  for (let i = 0; i < liste.length; i++) {
+    const f = liste[i], nom = nomPropre(f.name);
+    if (progres) progres(i, liste.length, nom);
+    try {
+      if (f.size > TAILLE_MAX_IMPORT) { bilan.erreurs.push(`${nom} : trop lourd (${moTexte(f.size)}, maximum ${moTexte(TAILLE_MAX_IMPORT)}).`); continue; }
+      const u8 = await lireDocument(f);
+      const genre = genreDocument(nom, u8);
+      if (!genre) { bilan.erreurs.push(messageFormat(nom)); continue; }
+      const titre = nom.replace(/\.[^.]+$/, "");
+      if (genre === "texte") {
+        const texte = new TextDecoder("utf-8").decode(u8).replace(/^\uFEFF/, "");
+        if (cible.note) {
+          if (cible.note.type === "cahier") { const pg = pagesTexte(texte); cible.note.pages.push(...pg); bilan.pages += pg.length; }
+          else cible.note.texte = ((cible.note.texte || "") + (cible.note.texte ? "\n\n" : "") + texte).slice(0, 2e6);
+          cible.note.maj = nowIsoMinutes();
+        } else {
+          app.donnees.notes.unshift(normaliserNote({id: newId(), type: "texte", titre, texte: texte.slice(0, 2e6), dossier: cible.dossier || "", maj: nowIsoMinutes()}));
+          bilan.notes++;
+        }
+        continue;
+      }
+      if (cible.note && cible.note.type !== "cahier") { bilan.erreurs.push(`${nom} : ce document est une note texte (importe un fichier TXT, ou crée un cahier).`); continue; }
+      const pdf = genre === "image" ? await imageEnPdf(u8) : u8;
+      if (pdf.length > TAILLE_MAX_IMPORT) { bilan.erreurs.push(`${nom} : trop lourd après conversion (${moTexte(pdf.length)}, maximum ${moTexte(TAILLE_MAX_IMPORT)}).`); continue; }
+      if (cible.note) {
+        const {id, tailles} = await preparerPdf(app, pdf, nom);
+        const pg = pagesPdf(id, tailles); cible.note.pages.push(...pg); cible.note.maj = nowIsoMinutes(); bilan.pages += pg.length;
+      } else {
+        await importerPdf(app, pdf, genre === "image" ? titre + ".pdf" : nom, cible.dossier || "", "");
+        bilan.notes++;
+      }
+    } catch (e) { bilan.erreurs.push(`${nom} : ${messageErreurImport(e)}`); Stock.journal("import " + nom, e); }
+  }
+  if (progres) progres(liste.length, liste.length, "");
+  app.sauver();
+  Fichiers.relancer();
+  return bilan;
+}
+
 /* fichiers choisis (.pdf, .zip GoodNotes, .json de modèles) */
-async function importerFichiers(app, fichiers, progres) {
+async function importerFichiers(app, fichiers, progres, cible) {
+  cible = cible || {};
   const d = app.donnees, bilan = {notes: 0, modeles: 0, erreurs: []};
   const taches = [];
   for (const f of fichiers) {
-    const nom = nomPropre(f.name), u8 = new Uint8Array(await f.arrayBuffer());
+    const nom = nomPropre(f.name);
+    let u8;
+    try { u8 = await lireDocument(f); } catch (e) { bilan.erreurs.push(nom + " : " + e.message); continue; }
+    if (!/\.(zip|json)$/i.test(nom) && u8.length > TAILLE_MAX_IMPORT) { bilan.erreurs.push(`${nom} : trop lourd (${moTexte(u8.length)}, maximum ${moTexte(TAILLE_MAX_IMPORT)}).`); continue; }
     if (/\.zip$/i.test(nom)) {
       const ents = await lireZip(u8);
       let couleurs = {};
@@ -299,20 +426,25 @@ async function importerFichiers(app, fichiers, progres) {
       }
     } else if (/\.pdf$/i.test(nom)) {
       taches.push({nom, lire: async () => u8, dossier: "", couleur: ""});
+    } else if (/\.(jpe?g|png|txt)$/i.test(nom)) {
+      const r = await importerDocuments(app, [f], null, cible);
+      bilan.notes += r.notes; bilan.erreurs.push(...r.erreurs);
     } else if (/\.goodnotes$/i.test(nom)) {
       taches.push({nom, lire: async () => u8, dossier: "", couleur: "", gn: true});
     } else if (/\.json$/i.test(nom)) {
       try { bilan.modeles += importerModeles(app, JSON.parse(new TextDecoder().decode(u8))); } catch (e) { bilan.erreurs.push(nom + " : " + e.message); }
-    } else bilan.erreurs.push(nom + " : format non pris en charge");
+    } else bilan.erreurs.push(messageFormat(nom));
   }
   for (let i = 0; i < taches.length; i++) {
     const t = taches[i];
     if (progres) progres(i, taches.length, t.nom);
     try {
-      const n = t.gn ? await importerGoodnotes(app, await t.lire(), t.nom) : await importerPdf(app, await t.lire(), t.nom, "", "");
+      const brut = await t.lire();
+      if (brut.length > TAILLE_MAX_IMPORT) throw new Error(`trop lourd (${moTexte(brut.length)}, maximum ${moTexte(TAILLE_MAX_IMPORT)})`);
+      const n = t.gn ? await importerGoodnotes(app, brut, t.nom) : await importerPdf(app, brut, t.nom, cible.dossier || "", "");
       if (t.dossier) n.dossier = dossierNomme(d, t.dossier, t.couleur);
       bilan.notes++;
-    } catch (e) { bilan.erreurs.push(t.nom + " : " + (e && e.message || e)); }
+    } catch (e) { bilan.erreurs.push(t.nom + " : " + messageErreurImport(e)); }
   }
   if (progres) progres(taches.length, taches.length, "");
   app.sauver();

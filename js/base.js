@@ -46,7 +46,7 @@ const ACCENTS = ["#5b9bff", "#3cc4c9", "#4fd1a1", "#f0a541", "#ff7a8d", "#a78bfa
 const DEFAUT_REGLAGES = {theme: "nuit", accent: "", forme: 2, texte: 100, h_debut: 7, h_fin: 22, notes_blocs: true,
   plein_ecran: true, horloge: true, secondes: true, son: true, rappel_cours: 0,
   prenom: "Antoine", objectif: 70, icones_theme: true};
-const REG_LOCAUX = ["vue", "plein_ecran", "texte", "horaire", "page", "vue3d", "onglets_notes"];
+const REG_LOCAUX = ["vue", "plein_ecran", "texte", "horaire", "page", "vue3d", "onglets_notes", "canevas_vues", "canevas_fond", "notes_repliees"];   // réglages propres à l'appareil
 const CATS_BASE = {
   info: ["Informatique (6GEN248)", "Informatique", true], graph: ["Sciences graphiques (6DDG100)", "Sc. graphiques", true],
   meca: ["Mécanique (6GMC108)", "Mécanique", true], ethique: ["Ingénierie et éthique (6GIN275)", "Éthique", true],
@@ -255,7 +255,7 @@ function normaliserHoraire(v) {
 
 /* ---------- notes : cahiers à pages (façon GoodNotes) */
 const PAGE_L = 1000, PAGE_H = 1414;
-const FONDS = [["ligne", "Lignes"], ["carreau", "Quadrillé"], ["points", "Points"], ["blanc", "Blanc"], ["cornell", "Cornell"]];
+const FONDS = [["ligne", "Lignes"], ["carreau", "Quadrillé"], ["points", "Points"], ["blanc", "Blanc"], ["cornell", "Cornell"], ["canevas", "Canevas infini"]];
 const PAPIERS = [["auto", "Selon le thème"], ["blanc", "Blanc"], ["creme", "Crème"], ["sombre", "Sombre"]];
 const COUVERTURES = ["#3d5a80", "#c0392b", "#e67e22", "#f1c40f", "#27ae60", "#16a085", "#2980b9", "#8e44ad", "#d35490", "#5d4037", "#2c3e50", "#7f8c8d"];
 function pageVide(f, id) { return {id: id || newId(), f: f || "ligne", h: PAGE_H, traits: [], textes: []}; }
@@ -301,6 +301,7 @@ function normaliserNote(n) {
     const q = {id: String(p.id), f: p.f || "ligne", h: p.h || PAGE_H, traits: Array.isArray(p.traits) ? p.traits : [], textes: Array.isArray(p.textes) ? p.textes : []};
     if (Array.isArray(p.pdf) && typeof p.pdf[0] === "string") q.pdf = [p.pdf[0], Number(p.pdf[1]) || 0];   // page d'un PDF importé
     if (p.mp) q.mp = 1;                                                                                     // marque-page
+    if (p.vide) q.vide = 1;                                                                                 // page vidée volontairement (voir pageVideSuspecte)
     return q;
   });
   if (n.type === "cahier" && !n.pages.length) n.pages.push(pageVide(n.fond, "p1"));
@@ -336,6 +337,26 @@ function normaliser(d) {
   return out;
 }
 
+/* ---------- garde-fous contre les pages blanches */
+/* une page n'est « vide volontairement » que si l'utilisateur l'a vidée (marqueur vide:1 dans sa section) */
+function contenuPage(v) { return v ? (Array.isArray(v.traits) ? v.traits.length : 0) + (Array.isArray(v.textes) ? v.textes.length : 0) : 0; }
+function pageVideSansAccord(v) { return !!v && typeof v === "object" && contenuPage(v) === 0 && !v.vide; }
+/* une section distante qui viderait une page (ou ferait disparaître toutes les pages d'un cahier) sans que l'autre appareil l'ait voulu */
+function videDistantSuspect(d, nom, valeur) {
+  if (!valeur || typeof valeur !== "object") return false;
+  if (nom.startsWith("np_")) {
+    const [, nid, pid] = nom.split("_");
+    const n = (d.notes || []).find(x => x.id === nid), p = n && (n.pages || []).find(x => x.id === pid);
+    return !!p && contenuPage(p) > 0 && pageVideSansAccord(valeur);
+  }
+  if (nom.startsWith("n_")) {
+    const n = (d.notes || []).find(x => x.id === nom.slice(2));
+    return !!n && n.type === "cahier" && (n.pages || []).length > 0 && valeur.type === "cahier" && !(valeur.pages || []).length;
+  }
+  return false;
+}
+function sectionDeNote(nom) { return nom === "notes" || nom.startsWith("n_") || nom.startsWith("np_"); }
+
 function sectionsDe(d) {
   const out = {};
   for (const [k, v] of Object.entries(d)) {
@@ -353,7 +374,7 @@ function sectionsDe(d) {
         for (const [a, b] of Object.entries(n)) if (a !== "pages") m[a] = b;
         m.pages = (n.pages || []).map(p => Object.assign({id: p.id, f: p.f, h: p.h}, p.pdf ? {pdf: p.pdf} : {}, p.mp ? {mp: 1} : {}));
         out["n_" + n.id] = m;
-        for (const p of n.pages || []) out["np_" + n.id + "_" + p.id] = {traits: p.traits || [], textes: p.textes || []};
+        for (const p of n.pages || []) out["np_" + n.id + "_" + p.id] = Object.assign({traits: p.traits || [], textes: p.textes || []}, p.vide ? {vide: 1} : {});
       }
     } else if (k.startsWith("h_") && v && typeof v === "object") {
       // autre horaire : une section pour l'horaire + une par semaine modifiée
@@ -382,7 +403,9 @@ function poserSection(d, nom, valeur) {
     n.pages = n.pages || [];
     let p = n.pages.find(x => x.id === pid);
     if (!p) { p = {id: pid, f: "ligne", h: PAGE_H}; n.pages.push(p); }
+    if (contenuPage(p) > 0 && pageVideSansAccord(valeur)) return;                // jamais de page blanche non voulue
     p.traits = valeur.traits || []; p.textes = valeur.textes || [];
+    if (valeur.vide && contenuPage(valeur) === 0) p.vide = 1; else delete p.vide;
   } else if (nom.startsWith("n_")) {
     const id = nom.slice(2);
     d.notes = d.notes || [];
@@ -391,7 +414,8 @@ function poserSection(d, nom, valeur) {
     const anc = i >= 0 ? d.notes[i] : null;
     const contenu = new Map(((anc && anc.pages) || []).map(p => [p.id, p]));
     const nv = Object.assign({}, valeur);
-    nv.pages = (valeur.pages || []).map(pm => { const c = contenu.get(pm.id); return Object.assign({traits: c ? c.traits || [] : [], textes: c ? c.textes || [] : []}, pm); });
+    if (valeur.type === "cahier" && !(valeur.pages || []).length && contenu.size) return;      // jamais un cahier sans page
+    nv.pages = (valeur.pages || []).map(pm => { const c = contenu.get(pm.id); return Object.assign({traits: c ? c.traits || [] : [], textes: c ? c.textes || [] : []}, c && c.vide ? {vide: 1} : {}, pm); });
     if (i >= 0) d.notes[i] = nv; else d.notes.push(nv);
   } else if (nom.startsWith("hs_")) {
     const i = nom.lastIndexOf("_"), id = nom.slice(3, i), l = nom.slice(i + 1);
@@ -419,36 +443,67 @@ function poserSection(d, nom, valeur) {
 
 /* stockage local de l'iPad */
 /* Les données vivent dans IndexedDB (beaucoup plus de place que localStorage pour les cahiers manuscrits).
-   Une copie en mémoire permet de lire tout de suite ; les écritures partent en arrière-plan. */
+   Une copie en mémoire permet de lire tout de suite ; les écritures partent en arrière-plan.
+   Règles de sûreté : une écriture n'est considérée comme faite qu'une fois la transaction terminée (sinon elle est
+   retentée), la copie de secours localStorage n'est retirée qu'après, et chaque erreur est journalisée. */
 const Stock = {
-  cache: {}, db: null, attente: {}, _t: null,
+  cache: {}, db: null, attente: {}, _t: null, degrade: false, erreurs: [], avantVider: [],
+  /* journal des erreurs de stockage et de synchro (console + les 60 dernières dans localStorage) */
+  journal(contexte, err) {
+    const e = {t: new Date().toISOString(), contexte, message: String(err && err.message || err)};
+    this.erreurs.push(e); if (this.erreurs.length > 60) this.erreurs.shift();
+    try { console.error("[horaire] " + contexte + " : " + e.message); } catch (x) { /* */ }
+    try { localStorage.setItem("horaire_journal", JSON.stringify(this.erreurs)); } catch (x) { /* */ }
+  },
+  async ouvrirBase() {
+    return await new Promise((ok, ko) => {
+      const r = indexedDB.open("horaire", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("kv");
+      r.onsuccess = () => ok(r.result); r.onerror = () => ko(r.error); r.onblocked = () => ko(new Error("base bloquée"));
+    });
+  },
   async init() {
-    try {
-      this.db = await new Promise((ok, ko) => {
-        const r = indexedDB.open("horaire", 1);
-        r.onupgradeneeded = () => r.result.createObjectStore("kv");
-        r.onsuccess = () => ok(r.result); r.onerror = () => ko(r.error);
-      });
-      const tout = await new Promise((ok, ko) => {
-        const out = {}, tx = this.db.transaction("kv", "readonly"), st = tx.objectStore("kv"), c = st.openCursor();
-        c.onsuccess = () => { const cur = c.result; if (cur) { out[cur.key] = cur.value; cur.continue(); } else ok(out); };
-        c.onerror = () => ko(c.error);
-      });
-      this.cache = tout;
-    } catch (e) { this.db = null; }
+    // iOS ferme parfois la connexion IndexedDB au réveil de l'appli : on réessaie avant de renoncer
+    for (let essai = 0; essai < 4 && !this.db; essai++) {
+      try {
+        const db = await this.ouvrirBase();
+        const tout = await new Promise((ok, ko) => {
+          const out = {}, tx = db.transaction("kv", "readonly"), st = tx.objectStore("kv"), c = st.openCursor();
+          c.onsuccess = () => { const cur = c.result; if (cur) { out[cur.key] = cur.value; cur.continue(); } else ok(out); };
+          c.onerror = () => ko(c.error); tx.onabort = () => ko(tx.error || new Error("lecture annulée"));
+        });
+        this.db = db; this.cache = tout;
+        db.onclose = () => { this.db = null; this.journal("base fermée par le système", "reconnexion à la prochaine écriture"); };
+        db.onversionchange = () => { try { db.close(); } catch (e) { /* */ } this.db = null; };
+      } catch (e) {
+        this.journal("ouverture du stockage (essai " + (essai + 1) + ")", e);
+        await new Promise(r => setTimeout(r, 250 * (essai + 1)));
+      }
+    }
+    if (!this.db) this.degrade = true;      // on continue avec localStorage, mais sans écraser ce qui est dans IndexedDB
     // reprise des anciennes données (localStorage)
     for (const k of ["horaire_donnees", "horaire_reglages_locaux", "horaire_synchro", "horaire_outils"]) {
       if (k in this.cache) continue;
-      try { const v = localStorage.getItem(k); if (v !== null) { this.cache[k] = JSON.parse(v); this.planifier(k); } } catch (e) { /* */ }
+      try { const v = localStorage.getItem(k); if (v !== null) { this.cache[k] = JSON.parse(v); this.planifier(k); } } catch (e) { this.journal("lecture de la copie de secours " + k, e); }
     }
     try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* */ }
   },
   lire(k, defaut) { return k in this.cache ? clone(this.cache[k]) : defaut; },
   ecrire(k, v) {
     this.cache[k] = v;                 // la référence suffit : on écrit la dernière version au moment de vider
-    if (!this.db) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+    if (!this.db) {
+      if (!this.degrade) this.rouvrir();
+      try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; }
+    }
     this.planifier(k);
     return true;
+  },
+  async rouvrir() {
+    if (this._rouvre) return;
+    this._rouvre = true;
+    try { this.db = await this.ouvrirBase(); for (const k of Object.keys(this.cache)) this.attente[k] = true; this.vider(); }
+    catch (e) { this.journal("réouverture du stockage", e); }
+    this._rouvre = false;
   },
   planifier(k) {
     this.attente[k] = true;
@@ -457,14 +512,36 @@ const Stock = {
   },
   vider() {
     if (!this.db) return;
-    const cles = Object.keys(this.attente); this.attente = {};
+    const cles = Object.keys(this.attente);
+    if (!cles.length) return;
+    this.attente = {};
+    const reessayer = (e, ctx) => {
+      this.journal(ctx, e);
+      for (const k of cles) this.attente[k] = true;
+      clearTimeout(this._t); this._t = setTimeout(() => this.vider(), 2000);
+    };
     try {
       const tx = this.db.transaction("kv", "readwrite"), st = tx.objectStore("kv");
       for (const k of cles) { if (k in this.cache) st.put(this.cache[k], k); else st.delete(k); }
-      for (const k of cles) { try { localStorage.removeItem(k); } catch (e) { /* */ } }
-    } catch (e) { /* */ }
+      tx.oncomplete = () => { for (const k of cles) { try { localStorage.removeItem(k); } catch (e) { /* */ } } };
+      tx.onerror = () => reessayer(tx.error, "écriture IndexedDB");
+      tx.onabort = () => reessayer(tx.error || new Error("transaction annulée"), "écriture IndexedDB annulée");
+    } catch (e) {
+      // base fermée par le système ou objet non copiable : on garde une copie de secours et on réessaie
+      for (const k of cles) { try { if (k in this.cache) localStorage.setItem(k, JSON.stringify(this.cache[k])); } catch (x) { /* */ } }
+      reessayer(e, "écriture IndexedDB");
+      this.db = null; this.rouvrir();
+    }
   },
   effacer(k) { delete this.cache[k]; if (this.db) this.planifier(k); try { localStorage.removeItem(k); } catch (e) { /* */ } },
 };
-window.addEventListener("pagehide", () => Stock.vider());
-document.addEventListener("visibilitychange", () => { if (document.hidden) Stock.vider(); });
+/* avant que l'appli soit suspendue ou fermée : terminer les saisies en cours (note tapée, trait) puis écrire tout de suite */
+function enregistrerAvantFermeture() {
+  for (const f of Stock.avantVider) { try { f(); } catch (e) { Stock.journal("enregistrement avant fermeture", e); } }
+  Stock.vider();
+}
+window.addEventListener("pagehide", enregistrerAvantFermeture);
+window.addEventListener("beforeunload", enregistrerAvantFermeture);
+document.addEventListener("visibilitychange", () => { if (document.hidden) enregistrerAvantFermeture(); });
+window.addEventListener("error", (e) => Stock.journal("erreur de l'appli", e.message + " (" + (e.filename || "").split("/").pop() + ":" + e.lineno + ")"));
+window.addEventListener("unhandledrejection", (e) => Stock.journal("promesse rejetée", e.reason));

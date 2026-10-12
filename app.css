@@ -757,3 +757,26 @@ body.glisse-en-cours, body.glisse-en-cours * { cursor: grabbing !important; }
 .onglet-x:hover { background: var(--surface); color: var(--ink); }
 .ecran-notes2.doc-ouvert { flex-direction: column; gap: 0; }
 .ecran-notes2.doc-ouvert > .doc-vue { flex: 1; min-height: 0; }
+
+/* ---- post-it : zone de saisie directe (glisser = déplacer, appui = translucide) */
+.postit-zone { position: absolute; z-index: 2; touch-action: none; cursor: grab; border-radius: 4px; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.postit-zone.saisi { cursor: grabbing; }
+.cah-pages.sans-postit .postit-zone { pointer-events: none; }
+/* ---- canevas infini */
+.feuille.canevas { overflow: hidden; }
+.feuille.canevas .cah-cv { cursor: crosshair; }
+.cah-pages.outil-main .feuille.canevas .cah-cv, .cah-vue.espace-presse .feuille.canevas .cah-cv, .doc-vue.espace-presse .feuille.canevas .cah-cv { cursor: grab; }
+.feuille.canevas .cah-cv.deplace { cursor: grabbing; }
+.feuille.canevas .feuille-num { display: none; }
+/* ---- replier le contenu d'un document */
+.doc-chev { flex: none; width: 44px; height: 44px; min-width: 44px; margin: -8px -6px -8px -10px; border: 0; background: transparent; color: var(--muted); border-radius: 50%; display: grid; place-items: center; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.doc-chev:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--ink); }
+.doc-chev svg { transition: transform .22s ease; }
+.doc.repliee .doc-chev svg { transform: rotate(-90deg); }
+.doc-contenu { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .24s ease, opacity .2s ease; }
+.doc-contenu > .doc-vignette { min-height: 0; overflow: hidden; }
+.doc.repliee .doc-contenu { grid-template-rows: 0fr; opacity: 0; pointer-events: none; }
+.doc.repliee .doc-contenu > .doc-vignette { box-shadow: none; }
+.liste-docs .doc-contenu { grid-template-columns: 1fr; grid-template-rows: none; transition: opacity .2s ease, width .24s ease; width: 64px; flex: none; }
+.liste-docs .doc.repliee .doc-contenu { width: 0; overflow: hidden; }
+@media (prefers-reduced-motion: reduce) { .doc-contenu, .doc-chev svg { transition: none; } }

@@ -5,7 +5,8 @@ class Synchro {
   constructor(app) {
     this.app = app;
     const c = Stock.lire("horaire_synchro", null) || {};
-    this.cfg = Object.assign({url: "", cle: "", appareil: "ipad-" + newId().slice(0, 6), base: {}, tl: {}}, c);
+    this.cfg = Object.assign({url: "", cle: "", appareil: "ipad-" + newId().slice(0, 6), base: {}, tl: {}, supprimees: []}, c);
+    if (!Array.isArray(this.cfg.supprimees)) this.cfg.supprimees = [];
     this.distant = {};
     this.recuComplet = false;
     this.enVol = {};
@@ -20,6 +21,10 @@ class Synchro {
     window.addEventListener("online", () => this.verifierConnexion(true));
     setInterval(() => this.tic(), 1000);
   }
+
+  /* une note n'est retirée du serveur que si l'utilisateur l'a supprimée (jamais parce qu'elle manque ici par accident) */
+  marquerSuppression(id) { if (id && !this.cfg.supprimees.includes(id)) { this.cfg.supprimees.push(id); this.ecrireCfg(); } }
+  suppressionVoulue(nom) { return nom.startsWith("n_") && this.cfg.supprimees.includes(nom.slice(2)); }
 
   configuree() { return !!(this.cfg.url && this.cfg.cle); }
   ecrireCfg() { Stock.ecrire("horaire_synchro", this.cfg); }
@@ -38,7 +43,7 @@ class Synchro {
   }
   oublier() {
     this.fermer();
-    this.cfg = {url: "", cle: "", appareil: this.cfg.appareil, base: {}, tl: {}};
+    this.cfg = {url: "", cle: "", appareil: this.cfg.appareil, base: {}, tl: {}, supprimees: []};
     this.ecrireCfg();
     this.etat = "non configurée";
     this.app.majEtatSynchro();
@@ -103,8 +108,10 @@ class Synchro {
     const chemin = String(msg.path || "/").split("/").filter(Boolean);
     const data = msg.data === undefined ? null : msg.data;
     const touches = new Set();
+    let instantane = false;
     if (!chemin.length) {
       if (ev === "put") {
+        instantane = true;                // photo complète du serveur : une section absente n'est pas forcément une suppression
         const anciens = Object.keys(this.distant);
         this.distant = {};
         for (const [k, v] of Object.entries(data || {})) if (v && typeof v === "object") this.distant[k] = v;
@@ -135,10 +142,10 @@ class Synchro {
       }
     }
     if (!this.recuComplet) return;
-    this.reconcilier(touches);
+    this.reconcilier(touches, instantane);
   }
 
-  reconcilier(noms) {
+  reconcilier(noms, instantane) {
     if (!this.app.donnees) {
       // premier lancement sur l'iPad : on prend tout ce qui vient du serveur
       if (!Object.keys(this.distant).length) { this.app.attenteDonnees(); return; }
@@ -153,20 +160,37 @@ class Synchro {
       const b = nom in base ? base[nom] : null;
       const rv = this.distant[nom];
       if (!rv || typeof rv.j !== "string") {
+        if (nom.startsWith("np_") && loc !== null && this.distant["n_" + nom.split("_")[1]]) {
+          aEnvoyer.push(nom);                // page disparue du serveur alors que sa note y est encore : on garde le contenu d'ici et on le renvoie
+          continue;
+        }
         if (b === null) { if (loc !== null && !this.app.premierChargement) aEnvoyer.push(nom); }
-        else if (loc === b) aAppliquer[nom] = null;
+        else if (loc === b) {
+          // absente du serveur : supprimée ailleurs… sauf si ce n'est qu'une photo du serveur et que c'est une note (on la garde et on la renvoie)
+          if (instantane && sectionDeNote(nom) && nom !== "notes" && !this.suppressionVoulue(nom)) { if (loc !== null) aEnvoyer.push(nom); }
+          else aAppliquer[nom] = null;
+        }
         else if (loc !== null) aEnvoyer.push(nom);
         continue;
       }
-      let valeur; try { valeur = JSON.parse(rv.j); } catch (e) { continue; }
+      let valeur; try { valeur = JSON.parse(rv.j); } catch (e) { Stock.journal("section illisible " + nom, e); continue; }
       const r = canon(valeur);
-      if (r === loc) base[nom] = r;
-      else if (loc === b || loc === null || this.app.premierChargement) aAppliquer[nom] = valeur;
+      if (r === loc) { base[nom] = r; continue; }
+      // une page vide ici (sans l'avoir voulu) ne remplace jamais une page remplie ailleurs : on récupère le contenu
+      if (loc !== null && nom.startsWith("np_") && pageVideSansAccord(locales[nom]) && contenuPage(valeur) > 0) { aAppliquer[nom] = valeur; continue; }
+      if (loc === b || loc === null || this.app.premierChargement) aAppliquer[nom] = valeur;
       else if (r === b) aEnvoyer.push(nom);
       else if ((rv.t || 0) >= (tl[nom] || 0)) aAppliquer[nom] = valeur;
       else aEnvoyer.push(nom);
     }
     if (this.app.premierChargement) this.app.premierChargement = false;
+    // jamais de page blanche ni de cahier sans page venus de l'autre appareil par accident : on garde le contenu d'ici et on le renvoie
+    for (const [nom, v] of Object.entries(aAppliquer)) {
+      if (v !== null && videDistantSuspect(this.app.donnees, nom, v)) {
+        Stock.journal("section distante vide refusée", nom);
+        delete aAppliquer[nom]; aEnvoyer.push(nom);
+      }
+    }
     if (Object.keys(aAppliquer).length) {
       if (this.app.peutAppliquerDistant()) this.appliquer(aAppliquer);
       else this.attente.push(aAppliquer);
@@ -214,6 +238,18 @@ class Synchro {
     const lot = {}, now = Date.now();
     for (const n of noms) {
       const j = n in locales ? canon(locales[n]) : null;
+      if (j === null && n.startsWith("np_")) { delete this.cfg.base[n]; continue; }               // une page retirée l'est par n_<id> : jamais de suppression de contenu de page
+      if (j === null && n.startsWith("n_") && !this.suppressionVoulue(n)) {
+        this._ignorees = this._ignorees || new Set();
+        if (!this._ignorees.has(n)) { this._ignorees.add(n); Stock.journal("suppression de note non voulue ignorée", n); }
+        continue;
+      }
+      if (j !== null && n.startsWith("np_") && pageVideSansAccord(locales[n])) {                 // page blanche sans accord : ne jamais écraser un contenu du serveur
+        const rv = this.distant[n];
+        let plein = false;
+        try { plein = !!(rv && typeof rv.j === "string" && contenuPage(JSON.parse(rv.j)) > 0); } catch (e) { /* */ }
+        if (plein) { Stock.journal("envoi d'une page vide refusé", n); continue; }
+      }
       if (n in this.enVol && this.enVol[n] === j) continue;
       this.enVol[n] = j;
       lot[n] = j === null ? null : {j, t: now, par: this.cfg.appareil};
@@ -227,12 +263,13 @@ class Synchro {
         for (const [n, v] of Object.entries(lot)) {
           const j = v ? v.j : null;
           if (this.enVol[n] === j) delete this.enVol[n];
-          if (j === null) delete this.cfg.base[n]; else this.cfg.base[n] = j;
+          if (j === null) { delete this.cfg.base[n]; if (n.startsWith("n_")) this.cfg.supprimees = this.cfg.supprimees.filter(x => x !== n.slice(2)); } else this.cfg.base[n] = j;
         }
         this.ecrireCfg();
         this.app.majEtatSynchro();
       })
-      .catch(() => {
+      .catch((e) => {
+        Stock.journal("envoi vers le serveur", e);
         for (const n of Object.keys(lot)) delete this.enVol[n];
         if (gen === this.gen) { this.detail = "envoi en attente"; this.reessai = Date.now() + 5000; }
         this.app.majEtatSynchro();

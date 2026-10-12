@@ -43,6 +43,7 @@ function cerclePdf(cx, cy, r) {
 
 /* contenu PDF d'une page de cahier (fond, surligneur, encre, textes) */
 function opsPage(page, pc) {
+  if (page.f === "canevas") page = pageCanevasAjustee(page);              // canevas infini : tout le contenu, mis à l'échelle sur une page
   const H = page.h * ECH_PDF, X = x => f2(x * ECH_PDF), Y = y => f2(H - y * ECH_PDF), o = [];
   const pdfFond = page.f === "pdf" && page.pdf;
   if (!pdfFond) {
