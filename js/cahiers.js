@@ -123,6 +123,46 @@ function distSeg(px, py, x0, y0, x1, y1) {
   const t = l2 ? Math.max(0, Math.min(1, ((px - x0) * dx + (py - y0) * dy) / l2)) : 0;
   return Math.hypot(px - x0 - t * dx, py - y0 - t * dy);
 }
+function estGribouillis(pts) {
+  const n = pts.length / 3;
+  if (n < 12) return false;
+  let a = 1e9, b = 1e9, c = -1e9, d = -1e9, lg = 0;
+  for (let i = 0; i < pts.length; i += 3) {
+    a = Math.min(a, pts[i]); c = Math.max(c, pts[i]); b = Math.min(b, pts[i + 1]); d = Math.max(d, pts[i + 1]);
+    if (i) lg += Math.hypot(pts[i] - pts[i - 3], pts[i + 1] - pts[i - 2]);
+  }
+  const w = c - a, h = d - b, g = Math.max(w, h);
+  if (g < 30 || g > 600 || lg < 3.2 * g) return false;
+  const k = w >= h ? 0 : 1;
+  let rev = 0, dern = 0, ref = pts[k];
+  for (let i = 3; i < pts.length; i += 3) {
+    const v = pts[i + k];
+    if (Math.abs(v - ref) < 6) continue;
+    const sens = v > ref ? 1 : -1;
+    if (dern && sens !== dern) rev++;
+    dern = sens; ref = v;
+  }
+  return rev >= 4;
+}
+function effacerSousGribouillis(page, scr) {
+  const [x0, y0, x1, y1] = boiteTrait(scr), m = 8;
+  let change = false;
+  const gardes = page.traits.filter(tr => {
+    const q = tr.p, n = q.length / 3;
+    let dedans = 0;
+    for (let i = 0; i < q.length; i += 3) if (q[i] >= x0 - m && q[i] <= x1 + m && q[i + 1] >= y0 - m && q[i + 1] <= y1 + m) dedans++;
+    if (n && dedans >= 0.6 * n) { change = true; return false; }
+    return true;
+  });
+  const textes = (page.textes || []).filter(t => {
+    const tw = t.w || 420, th = hauteurTexte(t);
+    const ox = Math.max(0, Math.min(x1, t.x + tw) - Math.max(x0, t.x)), oy = Math.max(0, Math.min(y1, t.y + th) - Math.max(y0, t.y));
+    if (ox * oy >= 0.5 * tw * th) { change = true; return false; }
+    return true;
+  });
+  if (change) { page.traits = gardes; page.textes = textes; }
+  return change;
+}
 function toucheTexte(tx, x, y, r) {
   const w = tx.w || 420, h = hauteurTexte(tx);
   const cx = Math.min(Math.max(x, tx.x), tx.x + w), cy = Math.min(Math.max(y, tx.y), tx.y + h);
@@ -733,6 +773,9 @@ class EditeurCahier {
     if (g.trait) {
       this.snap(f.page);
       if (g.outil === "forme") { const pts = reconnaitreForme(g.trait.p); if (pts) g.trait.p = pts; }
+      if ((g.outil === "plume" || g.outil === "bille") && estGribouillis(g.trait.p) && effacerSousGribouillis(f.page, g.trait)) {
+        this.peindre(f.page.id); this.modifie(); return;
+      }
       f.page.traits.push(g.trait);
       this.peindre(f.page.id);
       this.modifie();
