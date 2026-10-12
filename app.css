@@ -726,3 +726,34 @@ input[type="time"].saisie, input[type="date"].saisie { min-height: 42px; }
 .fantome-glisse { position: fixed; left: 0; top: 0; z-index: 9999; pointer-events: none; padding: 7px 14px; border-radius: 12px; background: var(--accent); color: var(--accent-ink); font-weight: 650; box-shadow: 0 10px 30px rgba(0,0,0,.35); max-width: 60vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .depot-sur { outline: 2px solid var(--accent); outline-offset: -2px; background: color-mix(in srgb, var(--accent) 20%, transparent) !important; }
 body.glisse-en-cours, body.glisse-en-cours * { cursor: grabbing !important; }
+
+/* ---------- fonctions façon GoodNotes : réglages du trait, marque-pages, laser, notes adhésives, onglets */
+.sw-plus { display: inline-flex; align-items: center; justify-content: center; border: 1.5px dashed var(--muted); background: none; color: var(--muted); cursor: pointer; padding: 0; }
+.cah-trait { width: auto !important; padding: 0 10px; border-radius: 99px; }
+.cah-trait span { width: auto !important; height: auto !important; background: none !important; font-size: 11px; color: var(--ink); }
+.trait-styles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 6px 0 16px; }
+.trait-style { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px 8px; border-radius: 14px; border: 1px solid var(--rule); background: var(--surface2); color: var(--ink); cursor: pointer; }
+.trait-style.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--surface2)); }
+.trait-apercu { display: block; width: 34px; border-top: 3px solid var(--accent); }
+.trait-apercu.tirets { border-top-style: dashed; }
+.trait-apercu.points { border-top-style: dotted; }
+.trait-ligne { display: flex; justify-content: space-between; align-items: center; }
+.trait-curseur { width: 100%; accent-color: var(--accent); margin: 8px 0 4px; }
+.mini { position: relative; }
+.mini-marque { position: absolute; top: 6px; right: 6px; color: var(--muted); opacity: .55; display: flex; }
+.mini-marque.on { color: var(--accent); opacity: 1; }
+.mini-marque.on svg path, .mini-marque.on svg polygon, .mini-marque.on svg polyline { fill: currentColor; }
+.mini-filtre { display: flex; gap: 6px; justify-content: center; }
+.mini-ajout { border: 2px dashed var(--accent) !important; min-height: 140px; justify-content: center; color: var(--accent); }
+.feuille.marquee::after { content: ""; position: absolute; top: -4px; right: 26px; width: 18px; height: 30px; background: var(--accent);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 75%, 0 100%); box-shadow: 0 2px 6px rgba(0,0,0,.3); }
+.cah-laser { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 2; }
+.cah-zone-texte.note-adh { border: none; box-shadow: 0 6px 18px rgba(0,0,0,.25); padding: 10px; }
+.doc-onglets { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 4px; border-bottom: 1px solid var(--rule); flex: none; }
+.onglet { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 14px; border-radius: 10px 10px 0 0; background: var(--surface2); color: var(--muted); cursor: pointer; max-width: 220px; flex: none; }
+.onglet.on { background: var(--surface3); color: var(--ink); box-shadow: inset 0 -2px 0 var(--accent); }
+.onglet-titre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: calc(13px * var(--txt)); }
+.onglet-x { border: none; background: none; color: var(--muted); cursor: pointer; font-size: 12px; padding: 2px 4px; border-radius: 6px; }
+.onglet-x:hover { background: var(--surface); color: var(--ink); }
+.ecran-notes2.doc-ouvert { flex-direction: column; gap: 0; }
+.ecran-notes2.doc-ouvert > .doc-vue { flex: 1; min-height: 0; }

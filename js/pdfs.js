@@ -286,7 +286,7 @@ async function importerFichiers(app, fichiers, progres) {
       let couleurs = {};
       const meta = ents.find(e => e.nom.endsWith(".goodnotesmeta"));
       if (meta) { try { for (const it of JSON.parse(new TextDecoder().decode(await meta.lire())).items || []) couleurs[nomPropre(it.path)] = couleurGoodNotes(it.color); } catch (e) { /* */ } }
-      const pdfs = ents.filter(e => /\.pdf$/i.test(e.nom) && !e.nom.split("/").some(x => x.startsWith("__MACOSX") || x.startsWith(".")));
+      const pdfs = ents.filter(e => /\.(pdf|goodnotes)$/i.test(e.nom) && !e.nom.split("/").some(x => x.startsWith("__MACOSX") || x.startsWith(".")));
       for (const e of pdfs) {
         const parts = e.nom.split("/"), fichier = parts.pop();
         // « Session 1/Éthique/Cours 3/x.pdf » → dossier « Éthique › Cours 3 » ; fichiers à la racine → « Session 1 »
@@ -295,10 +295,12 @@ async function importerFichiers(app, fichiers, progres) {
         let coul = "";
         for (let i = parts.length; i > 0 && !coul; i--) { const c = couleurs[parts.slice(0, i).join("/")]; if (c && c !== COULEURS_GN.blue) coul = c; }
         coul = coul || couleurs[parts.join("/")] || "";
-        taches.push({nom: fichier, lire: e.lire, dossier: nomDossier, couleur: coul});
+        taches.push({nom: fichier, lire: e.lire, dossier: nomDossier, couleur: coul, gn: /\.goodnotes$/i.test(fichier)});
       }
     } else if (/\.pdf$/i.test(nom)) {
       taches.push({nom, lire: async () => u8, dossier: "", couleur: ""});
+    } else if (/\.goodnotes$/i.test(nom)) {
+      taches.push({nom, lire: async () => u8, dossier: "", couleur: "", gn: true});
     } else if (/\.json$/i.test(nom)) {
       try { bilan.modeles += importerModeles(app, JSON.parse(new TextDecoder().decode(u8))); } catch (e) { bilan.erreurs.push(nom + " : " + e.message); }
     } else bilan.erreurs.push(nom + " : format non pris en charge");
@@ -307,7 +309,7 @@ async function importerFichiers(app, fichiers, progres) {
     const t = taches[i];
     if (progres) progres(i, taches.length, t.nom);
     try {
-      const n = await importerPdf(app, await t.lire(), t.nom, "", "");
+      const n = t.gn ? await importerGoodnotes(app, await t.lire(), t.nom) : await importerPdf(app, await t.lire(), t.nom, "", "");
       if (t.dossier) n.dossier = dossierNomme(d, t.dossier, t.couleur);
       bilan.notes++;
     } catch (e) { bilan.erreurs.push(t.nom + " : " + (e && e.message || e)); }

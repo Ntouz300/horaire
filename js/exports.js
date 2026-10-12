@@ -75,8 +75,9 @@ function opsPage(page, pc) {
       if (!!tr.o !== !!passe) continue;
       const p = tr.p || [];
       if (!p.length) continue;
-      const col = rgbPdf(estHex(tr.c) ? tr.c : encre), e = tr.e || 3, fixe = tr.o || tr.k === "b" || tr.k === "f";
-      o.push("q 1 J 1 j" + (tr.o ? (clair ? " /GM gs" : " /GN gs") : ""));
+      const col = rgbPdf(estHex(tr.c) ? tr.c : encre), e = tr.e || 3, fixe = tr.o || tr.k === "b" || tr.k === "f" || tr.k === "c" || !!tr.d;
+      o.push("q 1 J 1 j" + (tr.o || tr.k === "c" ? (clair ? " /GM gs" : " /GN gs") : ""));
+      if (tr.d === "t") o.push(`0 J [${f2(e * 3.2 * ECH_PDF)} ${f2(e * 2.2 * ECH_PDF)}] 0 d`); else if (tr.d === "p") o.push(`1 J [0 ${f2(e * 2.2 * ECH_PDF)}] 0 d`);
       o.push(`${col} RG ${col} rg`);
       if (p.length <= 3) {
         o.push(cerclePdf(p[0] * ECH_PDF, H - p[1] * ECH_PDF, Math.max(.5, e * (fixe ? .5 : (.35 + (p[2] ?? 50) / 110) / 2)) * ECH_PDF));
@@ -98,6 +99,7 @@ function opsPage(page, pc) {
   }
   for (const tx of page.textes || []) {
     const s = tx.s || 28;
+    if (tx.bg) { const m = 14, hb = Math.max(String(tx.t || "").split("\n").length * s * 1.3, (tx.w || 260) * .62); o.push(`q ${rgbPdf(tx.bg)} rg ${X(tx.x - m)} ${Y(tx.y + hb + m)} ${f2(((tx.w || 260) + 2 * m) * ECH_PDF)} ${f2((hb + 2 * m) * ECH_PDF)} re f Q`); }
     lignesEstimees(tx.t, s, tx.w || 420).forEach((l, i) => {
       if (l) o.push(`BT /F1 ${f2(s * ECH_PDF)} Tf ${rgbPdf(estHex(tx.c) ? tx.c : encre)} rg ${X(tx.x)} ${Y(tx.y + i * s * 1.3 + s * .78)} Td (${pdfChaine(l)}) Tj ET`);
     });
@@ -216,6 +218,7 @@ async function construireExport(n, format, pages) {
   const base = nomFichierSur(n.titre);
   if (format === "md") return [{nom: base + ".md", blob: new Blob([texteNote(n, true)], {type: "text/markdown"})}];
   if (format === "txt") return [{nom: base + ".txt", blob: new Blob([texteNote(n, false)], {type: "text/plain"})}];
+  if (format === "goodnotes") return [{nom: base + ".goodnotes", blob: await exporterGoodnotes(n, pages)}];
   if (format === "pdf") return [{nom: base + ".pdf", blob: new Blob([n.type === "cahier" ? await pdfCahier(n, pages) : pdfNoteTexte(n)], {type: "application/pdf"})}];
   const out = [];
   for (let i = 0; i < pages.length; i++) out.push({nom: pages.length > 1 ? `${base} - p${n.pages.indexOf(pages[i]) + 1}.png` : base + ".png", blob: await pngPage(pages[i], n.papier, 1600)});
@@ -247,17 +250,18 @@ class ExportNote extends Modal {
   dessiner() {
     const z = this.zone; z.innerHTML = "";
     const cahier = this.n.type === "cahier";
-    const formats = [["pdf", "PDF"], ...(cahier ? [["png", "Image PNG"]] : []), ["md", "Markdown (.md)"], ["txt", "Texte (.txt)"]];
+    const formats = [["pdf", "PDF"], ...(cahier ? [["png", "Image PNG"], ["goodnotes", "GoodNotes"]] : []), ["md", "Markdown (.md)"], ["txt", "Texte (.txt)"]];
     const f = el("div.rapides");
     for (const [v, t] of formats) f.append(petit(t, () => { this.format = v; this.dessiner(); }, this.format === v ? "tab_on" : "ghost"));
     z.append(etiquette("Format"), f);
-    if (cahier && (this.format === "pdf" || this.format === "png")) {
+    if (cahier && ["pdf", "png", "goodnotes"].includes(this.format)) {
       const p = el("div.rapides");
       p.append(petit(`Toutes les pages (${this.n.pages.length})`, () => { this.toutes = true; this.dessiner(); }, this.toutes ? "tab_on" : "ghost"),
         petit("Page actuelle", () => { this.toutes = false; this.dessiner(); }, this.toutes ? "ghost" : "tab_on"));
       z.append(etiquette("Pages"), p);
     }
     const aide = {pdf: "Garde l'écriture à la main en vectoriel, et les PDF importés en fond.", png: "Une image par page (1600 px de large).",
+      goodnotes: "Document GoodNotes : traits modifiables, papier et PDF en fond. Les zones de texte n'y sont pas reprises (expérimental).",
       md: "Le texte tapé, page par page (l'écriture à la main n'est pas convertie en texte).", txt: "Le texte tapé, sans mise en forme."}[this.format];
     z.append(el("p.petit.muted", {texte: aide}));
     this.etat = el("div.petit.muted");

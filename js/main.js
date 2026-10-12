@@ -431,7 +431,7 @@ class App {
     lg.innerHTML = "";
     const util = new Set(this.blocsVue().map(b => b.cat));
     for (const [k, v] of Object.entries(CATS)) if (util.has(k)) lg.append(el("span.leg", null, pastille(couleur(k)), v[1]));
-    if (T.REG_THEME === "minecraft") lg.append(barreObjets());
+    if (T.REG_THEME === "minecraft" && iconesJeu()) lg.append(barreObjets());
     lg.append(el("span.leg-aide.muted", {texte: "Pencil ou souris : glisser pour déplacer  ·  Doigt : maintenir puis glisser  ·  Bord du bas : durée"}));
   }
 

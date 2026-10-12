@@ -488,7 +488,7 @@ class Reglages extends Modal {
     this.cases = {};
     dr.append(etiquette("Matières et catégories"), this.sws = el("div.sws"), petit("Gérer les matières…", () => new Matieres(app).montrer()),
       etiquette("Grille horaire"), el("div.ligne-heures", null, "De", this.hd, "à", this.hf), etiquette("Options"));
-    for (const [cle, t] of [["horloge", "Afficher l'horloge en haut"], ["secondes", "Afficher les secondes"], ["son", "Son pour les alarmes et minuteries"], ["notes_blocs", "Afficher les notes dans les blocs"]]) {
+    for (const [cle, t] of [["horloge", "Afficher l'horloge en haut"], ["secondes", "Afficher les secondes"], ["son", "Son pour les alarmes et minuteries"], ["notes_blocs", "Afficher les notes dans les blocs"], ["icones_theme", "Icônes pixel des thèmes de jeu (Minecraft, Hollow Knight, Rocket League)"]]) {
       this.cases[cle] = caseACocher(this.d[cle] !== false, null, t);
       dr.append(this.cases[cle]);
     }

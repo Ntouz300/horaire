@@ -28,8 +28,9 @@ function couleurApp(page) {
 }
 /* icône d'une page ; en thème Minecraft, le sticker pixel-art correspondant */
 function iconePage(page, taille = 22) {
-  if (T.REG_THEME === "minecraft" && ICONE_PAGE[page]) {
-    return el("img.ico-pixel", {src: spriteURL(ICONE_PAGE[page], 4), alt: "", style: {width: taille + "px", height: taille + "px"}});
+  const j = iconesJeu();
+  if (j && j.page[page]) {
+    return el("img.ico-pixel", {src: spriteURL(j.page[page], 4), alt: "", style: {width: taille + "px", height: taille + "px"}});
   }
   return icone(page, taille);
 }
@@ -331,7 +332,7 @@ class PageResultats {
   cours(k, b) {
     const col = couleur(k), obj = this.objectif();
     const c = el("section.carte.res-cours", {style: {"--c": col}});
-    const visuel = T.REG_THEME === "minecraft" ? el("img.ico-pixel", {src: spriteURL(iconeCat(k), 3), style: {width: "24px", height: "24px"}}) : pastille(col, 12);
+    const visuel = iconesJeu() ? el("img.ico-pixel", {src: spriteURL(iconeCat(k), 3), style: {width: "24px", height: "24px"}}) : pastille(col, 12);
     c.append(el("div.rc-haut", null, visuel, el("div.rc-noms", null, el("h2", {texte: CATS[k][1]}), el("div.petit.muted", {texte: CATS[k][0]})),
       el("div.rc-moy", {texte: b.moyenne !== null ? fmtPct(b.moyenne) : "—", style: {color: b.moyenne !== null ? col : "var(--muted)"}})));
     if (!b.evals.length) { c.append(el("div.petit.muted", {texte: "Aucune évaluation pondérée. Ajoute-les dans Horaire → Échéances (avec la pondération)."})); return c; }

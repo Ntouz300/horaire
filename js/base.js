@@ -45,8 +45,8 @@ const TAILLES = [["Petit", 90], ["Normal", 100], ["Grand", 115], ["Très grand",
 const ACCENTS = ["#5b9bff", "#3cc4c9", "#4fd1a1", "#f0a541", "#ff7a8d", "#a78bfa", "#e879f9", "#f2d35b"];
 const DEFAUT_REGLAGES = {theme: "nuit", accent: "", forme: 2, texte: 100, h_debut: 7, h_fin: 22, notes_blocs: true,
   plein_ecran: true, horloge: true, secondes: true, son: true, rappel_cours: 0,
-  prenom: "Antoine", objectif: 70};
-const REG_LOCAUX = ["vue", "plein_ecran", "texte", "horaire", "page", "vue3d"];
+  prenom: "Antoine", objectif: 70, icones_theme: true};
+const REG_LOCAUX = ["vue", "plein_ecran", "texte", "horaire", "page", "vue3d", "onglets_notes"];
 const CATS_BASE = {
   info: ["Informatique (6GEN248)", "Informatique", true], graph: ["Sciences graphiques (6DDG100)", "Sc. graphiques", true],
   meca: ["Mécanique (6GMC108)", "Mécanique", true], ethique: ["Ingénierie et éthique (6GIN275)", "Éthique", true],
@@ -108,6 +108,7 @@ function R(x) { return Math.round(x * T.RAD); }
 function appliquerReglages(reg) {
   const t = THEMES[reg.theme] || THEMES.nuit;
   T.REG_THEME = THEMES[reg.theme] ? reg.theme : "nuit";
+  T.REG_ICONES = reg.icones_theme !== false;
   T.MONO = !!t.mono;
   T.TITRES = t.titres || "";
   for (const k of ["BG", "SURFACE", "SURFACE2", "SURFACE3", "INK", "MUTED", "RULE", "GRID", "TODAY_BG", "DANGER", "TINT", "SCROLL", "LINE2"]) T[k] = t[k];
@@ -299,6 +300,7 @@ function normaliserNote(n) {
   n.pages = n.pages.filter(p => p && p.id).map(p => {
     const q = {id: String(p.id), f: p.f || "ligne", h: p.h || PAGE_H, traits: Array.isArray(p.traits) ? p.traits : [], textes: Array.isArray(p.textes) ? p.textes : []};
     if (Array.isArray(p.pdf) && typeof p.pdf[0] === "string") q.pdf = [p.pdf[0], Number(p.pdf[1]) || 0];   // page d'un PDF importé
+    if (p.mp) q.mp = 1;                                                                                     // marque-page
     return q;
   });
   if (n.type === "cahier" && !n.pages.length) n.pages.push(pageVide(n.fond, "p1"));
@@ -349,7 +351,7 @@ function sectionsDe(d) {
       for (const n of v || []) {
         const m = {};
         for (const [a, b] of Object.entries(n)) if (a !== "pages") m[a] = b;
-        m.pages = (n.pages || []).map(p => p.pdf ? {id: p.id, f: p.f, h: p.h, pdf: p.pdf} : {id: p.id, f: p.f, h: p.h});
+        m.pages = (n.pages || []).map(p => Object.assign({id: p.id, f: p.f, h: p.h}, p.pdf ? {pdf: p.pdf} : {}, p.mp ? {mp: 1} : {}));
         out["n_" + n.id] = m;
         for (const p of n.pages || []) out["np_" + n.id + "_" + p.id] = {traits: p.traits || [], textes: p.textes || []};
       }

@@ -15,7 +15,12 @@ function couleursPapier(nom) {
 }
 const ENCRES = ["", "#1f6feb", "#e5484d", "#2f9e44", "#f08c00", "#9c36b5", "#0c8599", "#fab005"];
 const OUTILS_NOTES = [["plume", "Plume", "plume"], ["bille", "Stylo bille", "stylo"], ["surligneur", "Surligneur", "surligneur"],
-  ["gomme", "Gomme", "gomme"], ["lasso", "Lasso", "lasso"], ["forme", "Formes", "forme"], ["texte", "Texte", "texte"]];
+  ["gomme", "Gomme", "gomme"], ["lasso", "Lasso", "lasso"], ["forme", "Formes", "forme"], ["texte", "Texte", "texte"],
+  ["note", "Note adhésive", "note"], ["laser", "Pointeur laser", "laser"]];
+const STYLES_TRAIT = [["", "Uni"], ["t", "Tirets"], ["p", "Pointillés"]];
+const UNITE_MM = PAGE_L / 210;                 // une page fait 210 mm de large (A4)
+const COULEURS_NOTE = ["#fff3a3", "#ffd6e7", "#cfeeff", "#d6f5c6", "#ffe0b8"];
+const MAX_ONGLETS = 8;
 const EPAISSEURS = {plume: [1.6, 3, 5.5], bille: [1.4, 2.4, 4], surligneur: [12, 20, 30], forme: [1.6, 3, 5], gomme: [10, 22, 44]};
 
 /* fond d'une page (coordonnées page : 1000 × h) */
@@ -64,7 +69,9 @@ function tracer(ctx, tr, k, encre, clair) {
   ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineCap = "round"; ctx.lineJoin = "round";
   if (tr.o) { ctx.globalAlpha = clair ? .38 : .42; if (clair) ctx.globalCompositeOperation = "multiply"; }
   const ep = (tr.e || 3) * k;
-  const fixe = tr.o || tr.k === "b" || tr.k === "f";
+  if (tr.k === "c") ctx.globalAlpha = .62;
+  if (tr.d === "t") ctx.setLineDash([ep * 3.2, ep * 2.2]); else if (tr.d === "p") ctx.setLineDash([.01, ep * 2.2]);
+  const fixe = tr.o || tr.k === "b" || tr.k === "f" || tr.k === "c" || !!tr.d;
   if (p.length <= 3) {
     ctx.beginPath(); ctx.arc(p[0] * k, p[1] * k, Math.max(.7, ep * (fixe ? .5 : (.35 + (p[2] ?? 50) / 110) / 2)), 0, 7); ctx.fill();
   } else if (fixe) {
@@ -92,9 +99,16 @@ function lignesTexte(ctx, t, larg) {
   }
   return out;
 }
+function hauteurBloc(tx) { return tx.bg ? Math.max(hauteurTexte(tx), (tx.w || 260) * .62) : hauteurTexte(tx); }
 function dessinerTexte(ctx, tx, k, encre) {
   const s = (tx.s || 28) * k;
   ctx.save();
+  if (tx.bg) {                                            // note adhésive : carré coloré avec une ombre douce
+    const m = 14 * k, w = (tx.w || 260) * k, h = hauteurBloc(tx) * k;
+    ctx.save(); ctx.shadowColor = "rgba(0,0,0,.22)"; ctx.shadowBlur = 10 * k; ctx.shadowOffsetY = 4 * k;
+    ctx.fillStyle = tx.bg; ctx.fillRect(tx.x * k - m, tx.y * k - m, w + 2 * m, h + 2 * m); ctx.restore();
+    ctx.fillStyle = "rgba(0,0,0,.06)"; ctx.fillRect(tx.x * k - m, tx.y * k - m, w + 2 * m, 10 * k);
+  }
   ctx.fillStyle = estHex(tx.c) ? tx.c : encre;
   ctx.font = `${Math.round(s)}px ${getComputedStyle(document.documentElement).getPropertyValue("--f-corps")}`;
   ctx.textBaseline = "top";
@@ -379,7 +393,7 @@ class PageNotes {
     c.append(el("div.etiquette", {texte: "MATIÈRES"}));
     for (const [k, v] of Object.entries(CATS)) {
       const nb = notes.filter(n => n.cours === k).length;
-      if (v[2] || nb) item("m:" + k, v[1], nb, T.REG_THEME === "minecraft" ? el("img.ico-pixel", {src: spriteURL(iconeCat(k), 2), style: {width: "16px", height: "16px"}}) : pastille(couleur(k), 10));
+      if (v[2] || nb) item("m:" + k, v[1], nb, iconesJeu() ? el("img.ico-pixel", {src: spriteURL(iconeCat(k), 2), style: {width: "16px", height: "16px"}}) : pastille(couleur(k), 10));
     }
   }
   filtrees() {
@@ -438,11 +452,11 @@ class PageNotes {
     return c;
   }
   importer() {
-    const inp = el("input", {type: "file", multiple: true, accept: ".pdf,.zip,.json,application/pdf,application/zip,application/json", style: {display: "none"}});
+    const inp = el("input", {type: "file", multiple: true, accept: ".pdf,.zip,.json,.goodnotes,application/pdf,application/zip,application/json,application/octet-stream", style: {display: "none"}});
     inp.addEventListener("change", async () => {
       const fs = Array.from(inp.files || []); inp.remove();
       if (!fs.length) return;
-      const m = new Modal("Importation", "Les PDF deviennent des cahiers où tu peux écrire par-dessus.");
+      const m = new Modal("Importation", "Les PDF deviennent des cahiers où tu peux écrire par-dessus ; les fichiers GoodNotes gardent leurs traits modifiables.");
       const barre = el("div.import-barre", null, el("span")), txt = el("p.petit.muted", {texte: "Lecture des fichiers…"});
       m.carte.append(barre, txt);
       m.clicVoile = () => {};
@@ -451,7 +465,7 @@ class PageNotes {
         const b = await importerFichiers(this.app, fs, (i, n, nom) => { barre.firstChild.style.width = (n ? 100 * i / n : 0) + "%"; txt.textContent = nom ? `${i + 1} / ${n} — ${nom}` : "Terminé."; });
         m.fermer();
         const lignes = [];
-        if (b.notes) lignes.push(`${b.notes} cahier${b.notes > 1 ? "s" : ""} créé${b.notes > 1 ? "s" : ""} à partir de PDF.`);
+        if (b.notes) lignes.push(`${b.notes} cahier${b.notes > 1 ? "s" : ""} créé${b.notes > 1 ? "s" : ""} (PDF ou GoodNotes).`);
         if (b.modeles) lignes.push(`${b.modeles} modèle${b.modeles > 1 ? "s" : ""} de page ajouté${b.modeles > 1 ? "s" : ""}.`);
         if (this.app.sync.configuree() && b.notes) lignes.push("Les PDF partent vers l'autre appareil en arrière-plan (garde l'appli ouverte quelques minutes).");
         if (b.erreurs.length) lignes.push("Problèmes :\n" + b.erreurs.slice(0, 8).join("\n"));
@@ -471,12 +485,43 @@ class PageNotes {
     this.ouvrir(n.id);
     return n;
   }
+  onglets() {
+    const reg = this.app.reglages, ids = new Set(this.app.donnees.notes.map(n => n.id));
+    let l = Array.isArray(reg.onglets_notes) ? reg.onglets_notes.filter(x => ids.has(x)) : [];
+    if (l.length !== (reg.onglets_notes || []).length) reg.onglets_notes = l;
+    return l;
+  }
+  barreOnglets() {
+    const l = this.onglets();
+    if (l.length < 2) return null;
+    const b = el("div.doc-onglets");
+    for (const id of l) {
+      const n = this.note(id);
+      b.append(el("div.onglet" + (id === this.doc ? ".on" : ""), {title: n.titre || "Sans titre", onclick: () => { if (id !== this.doc) this.changerDoc(id); }},
+        el("span.onglet-titre", {texte: n.titre || "Sans titre"}),
+        el("button.onglet-x", {type: "button", title: "Fermer l'onglet", onclick: (e) => { e.stopPropagation(); this.fermerOnglet(id); }}, "✕")));
+    }
+    return b;
+  }
+  changerDoc(id) { if (this.ed) { this.ed.enregistrer(); if (this.ed.detruire) this.ed.detruire(); } this.ouvrir(id); }
+  fermerOnglet(id) {
+    const l = this.onglets().filter(x => x !== id);
+    this.app.reglages.onglets_notes = l; this.app.sauver();
+    if (id !== this.doc) { const b = this.el.querySelector(".doc-onglets"), nb = this.barreOnglets(); if (b) { if (nb) b.replaceWith(nb); else b.remove(); } return; }
+    if (l.length) this.changerDoc(l[l.length - 1]); else this.fermerDoc();
+  }
   ouvrir(id) {
     const n = this.note(id);
     if (!n) return this.bibliotheque();
     this.doc = id;
+    const l = this.onglets().filter(x => x !== id);
+    const i = (this.app.reglages.onglets_notes || []).indexOf(id);
+    if (i >= 0) l.splice(Math.min(i, l.length), 0, id); else l.push(id);
+    this.app.reglages.onglets_notes = l.slice(-MAX_ONGLETS);
     const z = this.el; z.innerHTML = ""; z.classList.add("doc-ouvert");
     this.ed = n.type === "cahier" ? new EditeurCahier(this, n) : new EditeurTexte(this, n);
+    const ong = this.barreOnglets();
+    if (ong) z.append(ong);
     z.append(this.ed.el);
     this.ed.apresAffichage && this.ed.apresAffichage();
   }
@@ -665,6 +710,10 @@ class EditeurCahier {
     this.doigt = !!r.doigt;
     this.zoom = r.zoom || 1;
     this.miniatures = !!r.miniatures;
+    this.style = r.style && typeof r.style === "object" ? r.style : {};          // style de trait par outil ("" | "t" | "p")
+    this.epPerso = r.epPerso && typeof r.epPerso === "object" ? r.epPerso : {};  // épaisseur réglée au curseur (mm × UNITE_MM)
+    this.noteCoul = r.noteCoul || COULEURS_NOTE[0];
+    this.filtreMini = "";
     this.histo = []; this.refait = [];
     this.sel = null;        // {page, traits:Set, textes:Set, boite}
     this.feuilles = new Map();   // id page → {div, cv, ctx, k}
@@ -675,7 +724,7 @@ class EditeurCahier {
   }
   memo() {
     Stock.ecrire("horaire_outils_notes", {outil: this.outil, couleurs: this.couleurs, coul: this.coul, epIdx: this.epIdx, gommePrecise: this.gommePrecise,
-      doigt: this.doigt, zoom: this.zoom, miniatures: this.miniatures});
+      doigt: this.doigt, zoom: this.zoom, miniatures: this.miniatures, style: this.style, epPerso: this.epPerso, noteCoul: this.noteCoul});
   }
   pc() { return couleursPapier(this.n.papier); }
   construire() {
@@ -727,11 +776,20 @@ class EditeurCahier {
           onclick: () => { if (this.coul === c && i > 0) this.changerCouleur(i); else { this.coul = c; this.memo(); this.dessinerOutils(); if (this.sel) this.recolorer(); } }});
         o.append(s);
       });
+      o.append(el("button.sw.sw-plus", {type: "button", title: "Couleur personnalisée", onclick: () => this.changerCouleur(Math.max(1, this.couleurs.indexOf(this.coul)) || 7)}, icone("plus", 14)));
     }
+    if (this.outil === "note") {
+      COULEURS_NOTE.forEach(c => o.append(el("span.sw" + (c === this.noteCoul ? ".on" : ""), {style: {background: c}, onclick: () => { this.noteCoul = c; this.memo(); this.dessinerOutils(); }})));
+      o.append(el("span.petit.muted.cah-aide", {texte: "Touche la page pour coller une note adhésive."}));
+    }
+    if (this.outil === "laser") o.append(el("span.petit.muted.cah-aide", {texte: "Montre sans écrire : le trait s'efface tout seul."}));
     if (EPAISSEURS[this.outil]) {
       o.append(el("span.cah-sep"));
       EPAISSEURS[this.outil].forEach((e, i) => o.append(el("button.cah-ep" + (this.epIdx[this.outil] === i ? ".on" : ""), {type: "button", title: "Épaisseur",
         onclick: () => { this.epIdx[this.outil] = i; this.memo(); this.dessinerOutils(); }}, el("span", {style: {width: Math.min(26, 4 + e * (this.outil === "surligneur" || this.outil === "gomme" ? .55 : 2.2)) + "px", height: Math.min(26, 4 + e * (this.outil === "surligneur" || this.outil === "gomme" ? .55 : 2.2)) + "px"}}))));
+      const st = this.style[this.outil] || "", perso = this.epIdx[this.outil] === 3;
+      o.append(el("button.cah-ep.cah-trait" + (perso || st ? ".on" : ""), {type: "button", title: "Réglages du trait (style, épaisseur en mm)", onclick: () => this.reglagesTrait()},
+        el("span.mono", {texte: (perso ? (Math.round(this.epaisseur() / UNITE_MM * 10) / 10).toString().replace(".", ",") + " mm" : "mm") + (st === "t" ? " ‒ ‒" : st === "p" ? " ···" : "")})));
     }
     if (this.outil === "gomme") {
       o.append(el("span.cah-sep"), petit(this.gommePrecise ? "Gomme précise" : "Trait entier", () => { this.gommePrecise = !this.gommePrecise; this.memo(); this.dessinerOutils(); }, "ghost"));
@@ -745,7 +803,33 @@ class EditeurCahier {
     const r = await choisirCouleur(this.couleurs[i] || "#1f6feb", "Couleur du stylo");
     if (r) { this.couleurs[i] = r; this.coul = r; this.memo(); this.dessinerOutils(); }
   }
-  epaisseur() { return (EPAISSEURS[this.outil] || [3])[this.epIdx[this.outil] ?? 1]; }
+  epaisseur(outil = this.outil) {
+    if (this.epIdx[outil] === 3 && this.epPerso[outil]) return this.epPerso[outil];
+    return (EPAISSEURS[outil] || [3])[Math.min(2, this.epIdx[outil] ?? 1)];
+  }
+  /* réglages du trait (comme GoodNotes) : style uni / tirets / pointillés, épaisseur en mm */
+  reglagesTrait() {
+    const outil = this.outil, m = new Modal("Réglages du trait", OUTILS_NOTES.find(o => o[0] === outil)[1]);
+    const styles = el("div.trait-styles");
+    const dessiner = () => {
+      styles.innerHTML = "";
+      if (outil === "surligneur") return;
+      for (const [v, t] of STYLES_TRAIT) {
+        const ap = el("span.trait-apercu" + (v ? "." + (v === "t" ? "tirets" : "points") : ""));
+        styles.append(el("button.trait-style" + ((this.style[outil] || "") === v ? ".on" : ""), {type: "button", onclick: () => { this.style[outil] = v; this.memo(); dessiner(); this.dessinerOutils(); }}, ap, el("span", {texte: t})));
+      }
+    };
+    dessiner();
+    const mm = (u) => (Math.round(u / UNITE_MM * 10) / 10).toFixed(1).replace(".", ",") + " mm";
+    const val = el("span.mono", {texte: mm(this.epaisseur(outil))});
+    const max = outil === "surligneur" || outil === "gomme" ? 12 : 3;
+    const curseur = el("input.trait-curseur", {type: "range", min: "0.1", max: String(max), step: "0.1", value: String(Math.round(this.epaisseur(outil) / UNITE_MM * 10) / 10),
+      oninput: (e) => { this.epPerso[outil] = Math.round(parseFloat(e.target.value) * UNITE_MM * 100) / 100; this.epIdx[outil] = 3; val.textContent = mm(this.epPerso[outil]); this.memo(); }});
+    m.carte.append(styles, el("div.trait-ligne", null, etiquette("Épaisseur du stylo"), val), curseur);
+    m.barre([], [bouton("OK", () => { m.fermer(); this.dessinerOutils(); }, "primary")]);
+    m.apres = () => this.dessinerOutils();
+    m.montrer();
+  }
 
   /* ----- pages */
   largeurBase() { return Math.max(320, Math.min(this.pagesZone.clientWidth - 48, 900)); }
@@ -848,13 +932,26 @@ class EditeurCahier {
   }
   dessinerMiniatures() {
     const m = this.mini; m.innerHTML = "";
+    for (const f of this.feuilles.values()) f.div.classList.toggle("marquee", !!f.page.mp);
     if (!this.miniatures) return;
+    const nb = this.n.pages.filter(p => p.mp).length;
+    m.append(el("div.mini-filtre", null, petit("Toutes", () => { this.filtreMini = ""; this.dessinerMiniatures(); }, this.filtreMini ? "ghost" : "tab_on"),
+      petit(`★ ${nb}`, () => { this.filtreMini = "mp"; this.dessinerMiniatures(); }, this.filtreMini ? "tab_on" : "ghost")));
     this.n.pages.forEach((p, i) => {
+      if (this.filtreMini && !p.mp) return;
+      const marque = el("span.mini-marque" + (p.mp ? ".on" : ""), {title: p.mp ? "Retirer le marque-page" : "Ajouter un marque-page",
+        onclick: (e) => { e.stopPropagation(); this.marquer(p); }}, icone("marque", 16));
       const b = el("button.mini" + (this.pageCourante === p ? ".on" : ""), {type: "button", "data-p": p.id, onclick: () => this.allerPage(p.id)},
-        canvasPage(p, this.n.papier, 110), el("span.mono", {texte: String(i + 1)}));
+        canvasPage(p, this.n.papier, 110), el("span.mono", {texte: String(i + 1)}), marque);
       m.append(b);
     });
+    if (this.filtreMini && !nb) m.append(el("div.petit.muted", {texte: "Aucune page marquée."}));
+    if (!this.filtreMini) {
+      const fond = this.n.fond === "pdf" ? "blanc" : this.n.fond;
+      m.append(el("button.mini.mini-ajout", {type: "button", title: "Ajouter une page à la fin", onclick: () => this.ajouterPage(this.n.pages.length, fond)}, icone("plus", 22)));
+    }
   }
+  marquer(p) { if (p.mp) delete p.mp; else p.mp = 1; this.modifie(); this.dessinerMiniatures(); }
   allerPage(pid) {
     const f = this.feuilles.get(pid);
     if (!f) return;
@@ -948,6 +1045,8 @@ class EditeurCahier {
     this.geste = {f, id: e.pointerId, outil, x0: x, y0: y, type: e.pointerType};
     if (outil === "gomme") { this.snap(f.page); this.gommer(f, x, y); return; }
     if (outil === "texte") { this.geste = null; this.ouvrirTexte(f, x, y); return; }
+    if (outil === "note") { this.geste = null; this.ouvrirTexte(f, x, y, {bg: this.noteCoul}); return; }
+    if (outil === "laser") { this.geste.laser = true; this.laser(f, x, y); return; }
     if (outil === "lasso") {
       if (this.sel && this.sel.page === f.page && this.dansBoite(x, y)) { this.snap(f.page); this.geste.deplace = true; return; }
       this.deselect(); this.geste.poly = [x, y]; return;
@@ -957,6 +1056,7 @@ class EditeurCahier {
     if (surl) tr.o = 1;
     if (outil === "bille") tr.k = "b";
     if (outil === "forme") tr.k = "f";
+    if (!surl && this.style[outil]) tr.d = this.style[outil];
     this.geste.trait = tr;
   }
   bouge(f, e) {
@@ -967,6 +1067,7 @@ class EditeurCahier {
     for (const ev of evs.length ? evs : [e]) {
       const [x, y, pr] = this.point(f, ev);
       if (g.outil === "gomme") { this.gommer(f, x, y); continue; }
+      if (g.laser) { this.laser(f, x, y); continue; }
       if (g.poly) { g.poly.push(x, y); continue; }
       if (g.deplace) { this.deplacerSel(x - g.x0, y - g.y0); g.x0 = x; g.y0 = y; continue; }
       if (g.trait) {
@@ -974,7 +1075,8 @@ class EditeurCahier {
         if (Math.hypot(x - t[n - 3], y - t[n - 2]) < 1) continue;
         t.push(x, y, pr);
         // trait en direct (sans tout redessiner)
-        if (!g.trait.o) tracer(f.ctx, {c: g.trait.c, e: g.trait.e, k: g.trait.k, p: t.slice(-6)}, f.k, this.pc().encre);
+        if (!g.trait.o && !g.trait.d) tracer(f.ctx, {c: g.trait.c, e: g.trait.e, k: g.trait.k, p: t.slice(-6)}, f.k, this.pc().encre);
+        else if (g.trait.d) { clearTimeout(this._live); this._live = setTimeout(() => { this.peindre(f.page.id); tracer(f.ctx, g.trait, f.k, this.pc().encre); }, 16); }
         else { clearTimeout(this._live); this._live = setTimeout(() => { this.peindre(f.page.id); const pc = this.pc(); tracer(f.ctx, g.trait, f.k, pc.encre, papierClair(pc)); }, 16); }
       }
     }
@@ -988,6 +1090,7 @@ class EditeurCahier {
     clearTimeout(this._live);
     this.geste = null;
     if (g.outil === "gomme") { this.peindre(f.page.id); this.modifie(); return; }
+    if (g.laser) return;
     if (g.poly) { this.selectionner(f, g.poly); return; }
     if (g.deplace) { this.modifie(); this.dessinerMiniatures(); return; }
     if (g.trait) {
@@ -1085,16 +1188,50 @@ class EditeurCahier {
   deselect() { const had = this.sel; this.sel = null; this.barreSel.hidden = true; if (had) this.peindre(had.page.id); }
 
   /* ----- zones de texte */
-  ouvrirTexte(f, x, y) {
+  /* pointeur laser : traînée lumineuse qui s'efface toute seule (rien n'est enregistré) */
+  laser(f, x, y) {
+    if (!f.laser) {
+      const cv = el("canvas.cah-laser");
+      cv.width = f.cv.width; cv.height = f.cv.height; cv.style.width = f.cv.style.width; cv.style.height = f.cv.style.height;
+      f.div.append(cv);
+      f.laser = {cv, ctx: cv.getContext("2d"), pts: []};
+    }
+    f.laser.pts.push([x, y, performance.now()]);
+    if (this._rafL) return;
+    const anim = () => {
+      let reste = false;
+      for (const g of this.feuilles.values()) {
+        const L = g.laser;
+        if (!L) continue;
+        const t = performance.now(), c = L.ctx, k = L.cv.width / PAGE_L;
+        L.pts = L.pts.filter(q => t - q[2] < 900);
+        c.clearRect(0, 0, L.cv.width, L.cv.height);
+        if (L.pts.length < 1 && !(this.geste && this.geste.f === g && this.geste.laser)) { L.cv.remove(); g.laser = null; continue; }
+        reste = true;
+        c.lineCap = "round"; c.lineJoin = "round";
+        for (let i = 1; i < L.pts.length; i++) {
+          const a = L.pts[i - 1], b = L.pts[i], al = Math.max(0, 1 - (t - b[2]) / 900);
+          c.strokeStyle = `rgba(255, 59, 48, ${al})`; c.shadowColor = "rgba(255, 80, 60, .9)"; c.shadowBlur = 12 * k;
+          c.lineWidth = 6 * k; c.beginPath(); c.moveTo(a[0] * k, a[1] * k); c.lineTo(b[0] * k, b[1] * k); c.stroke();
+        }
+        const d = L.pts[L.pts.length - 1];
+        if (d) { c.fillStyle = "rgba(255, 220, 210, .95)"; c.beginPath(); c.arc(d[0] * k, d[1] * k, 4 * k, 0, 7); c.fill(); }
+      }
+      this._rafL = reste ? requestAnimationFrame(anim) : 0;
+    };
+    this._rafL = requestAnimationFrame(anim);
+  }
+  ouvrirTexte(f, x, y, opts = {}) {
     const p = f.page;
-    let tx = (p.textes || []).find(t => x >= t.x - 10 && x <= t.x + (t.w || 420) && y >= t.y - 10 && y <= t.y + hauteurTexte(t) + 10);
+    let tx = (p.textes || []).find(t => x >= t.x - 14 && x <= t.x + (t.w || 420) + 14 && y >= t.y - 14 && y <= t.y + hauteurBloc(t) + 14);
     const nouveau = !tx;
-    if (nouveau) tx = {id: newId(), x: Math.max(10, Math.min(x, PAGE_L - 200)), y: Math.max(10, y - 14), w: Math.min(520, PAGE_L - 30 - x), t: "", c: this.coul, s: 28};
+    if (nouveau) tx = opts.bg ? {id: newId(), x: Math.max(24, Math.min(x - 40, PAGE_L - 300)), y: Math.max(24, y - 30), w: 260, t: "", c: "#2b2b2b", s: 24, bg: opts.bg}
+      : {id: newId(), x: Math.max(10, Math.min(x, PAGE_L - 200)), y: Math.max(10, y - 14), w: Math.min(520, PAGE_L - 30 - x), t: "", c: this.coul, s: 28};
     this.snap(p);
     if (!nouveau) { p.textes = p.textes.filter(t => t !== tx); this.peindre(p.id); }
     const pc = this.pc();
-    const ta = el("textarea.cah-zone-texte", {style: {left: tx.x * f.k + "px", top: tx.y * f.k + "px", width: Math.max(160, (tx.w || 420) * f.k) + "px",
-      fontSize: (tx.s || 28) * f.k + "px", color: estHex(tx.c) ? tx.c : pc.encre}});
+    const ta = el("textarea.cah-zone-texte" + (tx.bg ? ".note-adh" : ""), {style: {left: tx.x * f.k + "px", top: tx.y * f.k + "px", width: Math.max(160, (tx.w || 420) * f.k) + "px",
+      fontSize: (tx.s || 28) * f.k + "px", color: estHex(tx.c) ? tx.c : pc.encre, background: tx.bg || "", minHeight: tx.bg ? (tx.w || 260) * .62 * f.k + "px" : ""}});
     ta.value = tx.t || "";
     f.div.append(ta);
     this.texteOuvert = ta;
@@ -1103,7 +1240,7 @@ class EditeurCahier {
     ta.addEventListener("blur", () => {
       tx.t = ta.value.replace(/\s+$/, "");
       ta.remove(); this.texteOuvert = null;
-      if (tx.t) { p.textes = (p.textes || []).concat([tx]); }
+      if (tx.t || tx.bg) { p.textes = (p.textes || []).concat([tx]); }
       this.peindre(p.id); this.modifie();
     });
     setTimeout(() => { ta.focus(); ajuster(); }, 20);
