@@ -143,6 +143,21 @@ function dialogue(titre, message, boutons) {
   });
 }
 function informer(titre, message) { return dialogue(titre, message, [["OK", true, "primary"]]); }
+/* petite fenêtre de saisie d'un texte (nom d'un modèle, etc.) ; répond null si annulée */
+function demanderTexte(titre, etiq, valeur) {
+  return new Promise((res) => {
+    const m = new Modal(titre, null, {classe: "dialogue"});
+    const e = entree(valeur || "", {autofocus: true});
+    m.carte.append(champ(etiq, e));
+    let fait = false;
+    const finir = (v) => { if (!fait) { fait = true; res(v); } };
+    m.valider = () => { const v = e.value.trim(); if (!v) { m.erreur("Donne un nom."); return; } finir(v); m.fermer(); };
+    m.barre([], [bouton("Annuler", () => { finir(null); m.fermer(); }, "ghost"), bouton("OK", () => m.valider(), "primary")]);
+    const vieux = m.fermer.bind(m);
+    m.fermer = () => { vieux(); finir(null); };
+    m.montrer();
+  });
+}
 
 /* ---------- notifications (en bas à droite, avec son) */
 const Son = {

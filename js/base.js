@@ -258,6 +258,33 @@ const FONDS = [["ligne", "Lignes"], ["carreau", "Quadrillé"], ["points", "Point
 const PAPIERS = [["auto", "Selon le thème"], ["blanc", "Blanc"], ["creme", "Crème"], ["sombre", "Sombre"]];
 const COUVERTURES = ["#3d5a80", "#c0392b", "#e67e22", "#f1c40f", "#27ae60", "#16a085", "#2980b9", "#8e44ad", "#d35490", "#5d4037", "#2c3e50", "#7f8c8d"];
 function pageVide(f, id) { return {id: id || newId(), f: f || "ligne", h: PAGE_H, traits: [], textes: []}; }
+/* documents PDF importés (métadonnées seulement ; le contenu voyage à part) */
+function normaliserFichiers(l) {
+  const out = [], vus = new Set();
+  for (const f of Array.isArray(l) ? l : []) {
+    if (!f || typeof f.id !== "string" || vus.has(f.id)) continue;
+    vus.add(f.id);
+    out.push({id: f.id, nom: String(f.nom || "Document.pdf"), taille: Number(f.taille) || 0, n: Number(f.n) || 0,
+      pages: Array.isArray(f.pages) ? f.pages.filter(x => Array.isArray(x)).map(x => [Number(x[0]) || 612, Number(x[1]) || 792]) : [], ajout: String(f.ajout || "")});
+  }
+  return out;
+}
+/* modèles de pages (fond + contenu), réutilisables dans tous les cahiers */
+function normaliserModeles(l) {
+  const out = [], vus = new Set();
+  for (const m of Array.isArray(l) ? l : []) {
+    if (!m || typeof m !== "object") continue;
+    const id = typeof m.id === "string" && m.id ? m.id : newId();
+    if (vus.has(id)) continue;
+    vus.add(id);
+    out.push({id, nom: String(m.nom || "Modèle").slice(0, 60), f: FONDS.some(x => x[0] === m.f) ? m.f : "ligne",
+      h: Math.max(400, Math.min(4000, Number(m.h) || PAGE_H)), traits: Array.isArray(m.traits) ? m.traits : [], textes: Array.isArray(m.textes) ? m.textes : []});
+  }
+  return out;
+}
+function pageDepuisModele(m) {
+  return {id: newId(), f: m.f, h: m.h, traits: clone(m.traits || []), textes: clone(m.textes || []).map(t => Object.assign(t, {id: newId()}))};
+}
 function normaliserNote(n) {
   n = Object.assign({titre: "", texte: "", cours: "", epingle: false, dossier: "", type: "", couverture: "", fond: "ligne", papier: "auto"}, n || {});
   if (!n.id) n.id = newId();
@@ -268,8 +295,11 @@ function normaliserNote(n) {
   }
   delete n.dessin;
   if (!n.type) n.type = n.pages.length ? "cahier" : "texte";
-  n.pages = n.pages.filter(p => p && p.id).map(p => ({id: String(p.id), f: p.f || "ligne", h: p.h || PAGE_H,
-    traits: Array.isArray(p.traits) ? p.traits : [], textes: Array.isArray(p.textes) ? p.textes : []}));
+  n.pages = n.pages.filter(p => p && p.id).map(p => {
+    const q = {id: String(p.id), f: p.f || "ligne", h: p.h || PAGE_H, traits: Array.isArray(p.traits) ? p.traits : [], textes: Array.isArray(p.textes) ? p.textes : []};
+    if (Array.isArray(p.pdf) && typeof p.pdf[0] === "string") q.pdf = [p.pdf[0], Number(p.pdf[1]) || 0];   // page d'un PDF importé
+    return q;
+  });
   if (n.type === "cahier" && !n.pages.length) n.pages.push(pageVide(n.fond, "p1"));
   return n;
 }
@@ -292,6 +322,8 @@ function normaliser(d) {
   if (!out.pomodoro || typeof out.pomodoro !== "object") out.pomodoro = {travail: 25, pause: 5, longue: 15, cycles: 4};
   out.notes = out.notes.filter(n => n && typeof n === "object").map(normaliserNote);
   out.dossiers = normaliserDossiers(out.dossiers);
+  out.fichiers = normaliserFichiers(out.fichiers);
+  out.modeles = normaliserModeles(out.modeles);
   out.horaires = listeHoraires(out);
   const ids = new Set(out.horaires.map(h => h.id));
   for (const k of Object.keys(out)) {
@@ -316,7 +348,7 @@ function sectionsDe(d) {
       for (const n of v || []) {
         const m = {};
         for (const [a, b] of Object.entries(n)) if (a !== "pages") m[a] = b;
-        m.pages = (n.pages || []).map(p => ({id: p.id, f: p.f, h: p.h}));
+        m.pages = (n.pages || []).map(p => p.pdf ? {id: p.id, f: p.f, h: p.h, pdf: p.pdf} : {id: p.id, f: p.f, h: p.h});
         out["n_" + n.id] = m;
         for (const p of n.pages || []) out["np_" + n.id + "_" + p.id] = {traits: p.traits || [], textes: p.textes || []};
       }

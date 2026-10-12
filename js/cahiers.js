@@ -21,6 +21,17 @@ const EPAISSEURS = {plume: [1.6, 3, 5.5], bille: [1.4, 2.4, 4], surligneur: [12,
 /* fond d'une page (coordonnées page : 1000 × h) */
 function dessinerFond(ctx, page, k, pc) {
   const L = PAGE_L * k, H = page.h * k;
+  if (page.f === "pdf" && page.pdf) {
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, L, H);
+    const t = ctx.getTransform ? ctx.getTransform().a : 1;
+    const img = Rendu.image(page.pdf[0], page.pdf[1], L * t);
+    if (img) ctx.drawImage(img, 0, 0, L, H);
+    else {
+      ctx.fillStyle = "#8a94a6"; ctx.font = `${Math.max(9, Math.round(24 * k))}px sans-serif`; ctx.textAlign = "center";
+      ctx.fillText(Rendu.erreur(page.pdf[0]) ? "PDF indisponible" : "Chargement du PDF…", L / 2, H / 2); ctx.textAlign = "start";
+    }
+    return;
+  }
   ctx.fillStyle = pc.fond; ctx.fillRect(0, 0, L, H);
   ctx.lineWidth = Math.max(1, k * 1.4);
   const ligne = (x0, y0, x1, y1, c) => { ctx.strokeStyle = c || pc.ligne; ctx.beginPath(); ctx.moveTo(x0 * k, y0 * k); ctx.lineTo(x1 * k, y1 * k); ctx.stroke(); };
@@ -93,9 +104,9 @@ function dessinerTexte(ctx, tx, k, encre) {
 function hauteurTexte(tx) { const n = String(tx.t || "").split("\n").reduce((a, l) => a + Math.max(1, Math.ceil(l.length * (tx.s || 28) * .5 / (tx.w || 420))), 0); return n * (tx.s || 28) * 1.3; }
 function dessinerPage(ctx, page, k, pc, sel) {
   dessinerFond(ctx, page, k, pc);
-  const clair = papierClair(pc);
-  for (const tr of page.traits) tracer(ctx, tr, k, pc.encre, clair);
-  for (const tx of page.textes || []) dessinerTexte(ctx, tx, k, pc.encre);
+  const surPdf = page.f === "pdf" && page.pdf, clair = surPdf || papierClair(pc), encre = surPdf ? "#1b1f24" : pc.encre;
+  for (const tr of page.traits) tracer(ctx, tr, k, encre, clair);
+  for (const tx of page.textes || []) dessinerTexte(ctx, tx, k, encre);
   if (sel) {
     const b = sel.boite;
     ctx.save(); ctx.setLineDash([6, 5]); ctx.strokeStyle = T.ACCENT; ctx.lineWidth = 2;
@@ -109,6 +120,15 @@ function canvasPage(page, papier, largeur) {
   cv.style.width = largeur + "px"; cv.style.height = Math.round(page.h * k) + "px";
   const ctx = cv.getContext("2d"); ctx.scale(dpr, dpr);
   dessinerPage(ctx, page, k, couleursPapier(papier));
+  if (page.f === "pdf" && page.pdf) {
+    const fin = Rendu.surPret((id, idx) => {
+      if (!cv.isConnected && cv._vu) { fin(); return; }
+      if (id !== page.pdf[0] || idx !== page.pdf[1]) return;
+      fin(); ctx.clearRect(0, 0, largeur, page.h * k); dessinerPage(ctx, page, k, couleursPapier(papier));
+    });
+    requestAnimationFrame(() => { cv._vu = true; });
+    setTimeout(fin, 120000);
+  }
   return cv;
 }
 
@@ -261,6 +281,7 @@ class PageNotes {
     this.titreFiltre = el("h1.page-h1");
     main.append(el("header.nb-tete", null, this.titreFiltre, el("span.espace"),
       el("div.nt-recherche-zone.nb-rech", null, icone("recherche", 18), this.recherche), tri, vue,
+      boutonIcone("exporter", "Importer", () => this.importer(), "ghost"),
       boutonIcone("plus", "Nouveau", () => new NouveauDocument(this).montrer(), "primary")));
     this.zoneDocs = el("div.nb-docs" + (this.vue === "liste" ? ".liste-docs" : ""));
     main.append(this.zoneDocs);
@@ -277,9 +298,11 @@ class PageNotes {
     item("*", "Favoris", notes.filter(n => n.epingle).length, icone("etoile", 18));
     item("~", "Récents", notes.filter(n => (n.maj || "") >= semaine).length, icone("horloge", 18));
     c.append(el("div.nb-sous", null, el("div.etiquette", {texte: "DOSSIERS"}), el("button.nb-mini", {type: "button", title: "Nouveau dossier", onclick: () => new EditeurDossier(this, null).montrer()}, icone("plus", 16))));
-    for (const d of dossiers) {
-      const b = el("button.nt-carnet" + (this.filtre === "d:" + d.id ? ".actif" : ""), {type: "button", onclick: () => { this.filtre = "d:" + d.id; this.bibliotheque(); }},
-        el("span.dossier-ico", {style: {"--c": d.couleur}}), el("span.nt-nom", {texte: d.nom}), el("span.mono.muted", {texte: String(notes.filter(n => n.dossier === d.id).length)}));
+    // « Éthique › Cours 3 » s'affiche « Cours 3 », en retrait sous « Éthique »
+    for (const d of dossiers.slice().sort((x, y) => x.nom.localeCompare(y.nom, "fr"))) {
+      const parts = d.nom.split(" › ");
+      const b = el("button.nt-carnet" + (this.filtre === "d:" + d.id ? ".actif" : ""), {type: "button", title: d.nom, style: {paddingLeft: (parts.length > 1 ? 10 + 16 * (parts.length - 1) : 10) + "px"}, onclick: () => { this.filtre = "d:" + d.id; this.bibliotheque(); }},
+        el("span.dossier-ico", {style: {"--c": d.couleur}}), el("span.nt-nom", {texte: parts[parts.length - 1]}), el("span.mono.muted", {texte: String(notes.filter(n => n.dossier === d.id).length)}));
       b.addEventListener("contextmenu", (e) => { e.preventDefault(); new EditeurDossier(this, d).montrer(); });
       const mod = el("span.nb-mod", {title: "Modifier", onclick: (e) => { e.stopPropagation(); new EditeurDossier(this, d).montrer(); }}, icone("crayon", 14));
       b.append(mod);
@@ -346,6 +369,31 @@ class PageNotes {
     c.addEventListener("contextmenu", (e) => { e.preventDefault(); new InfosDocument(this, n).montrer(); });
     return c;
   }
+  importer() {
+    const inp = el("input", {type: "file", multiple: true, accept: ".pdf,.zip,.json,application/pdf,application/zip,application/json", style: {display: "none"}});
+    inp.addEventListener("change", async () => {
+      const fs = Array.from(inp.files || []); inp.remove();
+      if (!fs.length) return;
+      const m = new Modal("Importation", "Les PDF deviennent des cahiers où tu peux écrire par-dessus.");
+      const barre = el("div.import-barre", null, el("span")), txt = el("p.petit.muted", {texte: "Lecture des fichiers…"});
+      m.carte.append(barre, txt);
+      m.clicVoile = () => {};
+      m.montrer();
+      try {
+        const b = await importerFichiers(this.app, fs, (i, n, nom) => { barre.firstChild.style.width = (n ? 100 * i / n : 0) + "%"; txt.textContent = nom ? `${i + 1} / ${n} — ${nom}` : "Terminé."; });
+        m.fermer();
+        const lignes = [];
+        if (b.notes) lignes.push(`${b.notes} cahier${b.notes > 1 ? "s" : ""} créé${b.notes > 1 ? "s" : ""} à partir de PDF.`);
+        if (b.modeles) lignes.push(`${b.modeles} modèle${b.modeles > 1 ? "s" : ""} de page ajouté${b.modeles > 1 ? "s" : ""}.`);
+        if (this.app.sync.configuree() && b.notes) lignes.push("Les PDF partent vers l'autre appareil en arrière-plan (garde l'appli ouverte quelques minutes).");
+        if (b.erreurs.length) lignes.push("Problèmes :\n" + b.erreurs.slice(0, 8).join("\n"));
+        this.bibliotheque();
+        informer("Importation", lignes.join("\n\n") || "Rien à importer.");
+      } catch (e) { m.fermer(); informer("Importation", "Erreur : " + (e && e.message || e)); }
+    });
+    document.body.append(inp);
+    inp.click();
+  }
   creer(opts) {
     const n = normaliserNote(Object.assign({id: newId(), maj: nowIsoMinutes(), cours: this.filtre.startsWith("m:") ? this.filtre.slice(2) : "",
       dossier: this.filtre.startsWith("d:") ? this.filtre.slice(2) : "", epingle: this.filtre === "*"}, opts));
@@ -370,6 +418,12 @@ class PageNotes {
       if (!ok) return false;
       const l = this.app.donnees.notes, i = l.indexOf(n);
       if (i >= 0) l.splice(i, 1);
+      const ids = new Set((n.pages || []).filter(p => p.pdf).map(p => p.pdf[0]));
+      for (const id of ids) {
+        if (l.some(x => (x.pages || []).some(p => p.pdf && p.pdf[0] === id))) continue;
+        this.app.donnees.fichiers = (this.app.donnees.fichiers || []).filter(f => f.id !== id);
+        Fichiers.supprimer(id);
+      }
       if (this.doc === n.id) { this.ed = null; this.doc = null; this.sale = false; }
       this.app.sauver();
       this.bibliotheque();
@@ -437,7 +491,8 @@ class InfosDocument extends Modal {
     this.carte.append(champ("Titre", this.titre), el("div.grille2", null, champ("Matière", this.cours), champ("Dossier", this.dossier)), el("div.champ", null, this.fav));
     this.zone = el("div"); this.carte.append(this.zone);
     this.dessiner();
-    this.barre([bouton("Supprimer", () => { this.fermer(); pn.supprimer(n); }, "danger"), bouton("Dupliquer", () => { this.fermer(); pn.dupliquer(n); })],
+    this.barre([bouton("Supprimer", () => { this.fermer(); pn.supprimer(n); }, "danger"), bouton("Dupliquer", () => { this.fermer(); pn.dupliquer(n); }),
+      bouton("Exporter", () => { this.fermer(); new ExportNote(n, null).montrer(); })],
       [bouton("Annuler", () => this.fermer()), bouton("Enregistrer", () => this.valider(), "primary")]);
   }
   dessiner() {
@@ -504,7 +559,8 @@ class EditeurTexte {
     this.el = el("div.doc-vue", null,
       el("header.doc-barre", null, boutonIcone("retour", "Bibliothèque", () => pn.fermerDoc(), "tab"), el("span.espace"), this.etat,
         boutonIcone("etoile", "", () => { n.epingle = !n.epingle; this.modifie(true); this.majFav(); }, "ghost"),
-        boutonIcone("reglages", "", () => { this.enregistrer(); new InfosDocument(pn, n).montrer(); }, "ghost")),
+        boutonIcone("reglages", "", () => { this.enregistrer(); new InfosDocument(pn, n).montrer(); }, "ghost"),
+        boutonIcone("exporter", "", () => { this.enregistrer(); new ExportNote(n, null).montrer(); }, "ghost")),
       el("section.carte.doc-texte-ed", {style: {background: pc.fond, color: pc.encre}}, this.titre, el("div.nt-sep"), this.texte));
     this.majFav();
   }
@@ -544,6 +600,9 @@ class EditeurCahier {
     this.histo = []; this.refait = [];
     this.sel = null;        // {page, traits:Set, textes:Set, boite}
     this.feuilles = new Map();   // id page → {div, cv, ctx, k}
+    this.finRendu = Rendu.surPret((id, idx) => {
+      for (const f of this.feuilles.values()) if (f.page.pdf && f.page.pdf[0] === id && f.page.pdf[1] === idx && f.alloue) this.peindre(f.page.id);
+    });
     this.construire();
   }
   memo() {
@@ -561,15 +620,18 @@ class EditeurCahier {
       boutonIcone("zoom-moins", "", () => this.setZoom(this.zoom / 1.2), "ghost"), el("span.mono.cah-zoom", {texte: ""}),
       boutonIcone("zoom-plus", "", () => this.setZoom(this.zoom * 1.2), "ghost"),
       boutonIcone("page-plus", "Page", () => this.menuPage(), "ghost"),
+      boutonIcone("exporter", "", () => { this.enregistrer(); new ExportNote(this.n, this.pageCourante).montrer(); }, "ghost"),
       boutonIcone("reglages", "", () => { this.enregistrer(); new InfosDocument(this.pn, n).montrer(); }, "ghost"));
     this.barreOutils = el("div.cah-outils");
     this.optOutil = el("div.cah-options");
     this.barreSel = el("div.cah-sel", {hidden: true});
     this.pagesZone = el("div.cah-pages");
+    this.piste = el("div.cah-piste");
+    this.pagesZone.append(this.piste);
     this.mini = el("aside.cah-mini");
     this.el = el("div.doc-vue.cahier" + (this.miniatures ? ".avec-mini" : ""), null, tete, el("div.cah-barre", null, this.barreOutils, this.optOutil),
       el("div.cah-corps", null, this.mini, this.pagesZone, this.barreSel));
-    if ((n.texte || "").trim()) this.pagesZone.append(el("details.cah-texte", null, el("summary", {texte: "Texte tapé de cette note"}),
+    if ((n.texte || "").trim()) this.piste.append(el("details.cah-texte", null, el("summary", {texte: "Texte tapé de cette note"}),
       Object.assign(el("textarea.saisie", {rows: 4, oninput: (e) => { this.n.texte = e.target.value; this.modifie(); }}), {value: n.texte})));
     this.dessinerOutils();
     this.installerPinch();
@@ -577,9 +639,9 @@ class EditeurCahier {
   apresAffichage() {
     this.construirePages();
     this.dessinerMiniatures();
-    this.pagesZone.addEventListener("scroll", () => this.majNumero(), {passive: true});
+    this.pagesZone.addEventListener("scroll", () => { if (!this._rafN) this._rafN = requestAnimationFrame(() => { this._rafN = 0; this.majNumero(); }); }, {passive: true});
   }
-  detruire() { if (this._ro) this._ro.disconnect(); if (this._io) this._io.disconnect(); }
+  detruire() { if (this._ro) this._ro.disconnect(); if (this._io) this._io.disconnect(); if (this._io2) this._io2.disconnect(); if (this.finRendu) this.finRendu(); }
 
   /* ----- barre d'outils */
   dessinerOutils() {
@@ -623,50 +685,77 @@ class EditeurCahier {
     for (const f of this.feuilles.values()) f.div.remove();
     this.feuilles.clear();
     if (this._io) this._io.disconnect();
-    this._io = new IntersectionObserver((ents) => { for (const e of ents) if (e.isIntersecting) { const f = [...this.feuilles.values()].find(x => x.div === e.target); if (f && f.aDessiner) this.peindre(f.page.id); } }, {root: this.pagesZone, rootMargin: "600px 0px"});
+    if (this._io2) this._io2.disconnect();
+    const trouver = (t) => [...this.feuilles.values()].find(x => x.div === t);
+    this._io = new IntersectionObserver((ents) => { for (const e of ents) if (e.isIntersecting) { const f = trouver(e.target); if (f && (f.aDessiner || !f.alloue)) this.peindre(f.page.id); } }, {root: this.pagesZone, rootMargin: "500px 300px"});
+    this._io2 = new IntersectionObserver((ents) => { for (const e of ents) if (!e.isIntersecting) { const f = trouver(e.target); if (f) this.liberer(f); } }, {root: this.pagesZone, rootMargin: "2200px 1200px"});
     const W = this.largeurBase() * this.zoom;
     this.n.pages.forEach((p, i) => {
       const cv = el("canvas.cah-cv"), div = el("div.feuille", {"data-p": p.id}, cv, el("span.feuille-num", {texte: `${i + 1}`}));
-      this.pagesZone.append(div);
-      const f = {page: p, div, cv, ctx: cv.getContext("2d"), k: W / PAGE_L, aDessiner: true};
+      this.piste.append(div);
+      const f = {page: p, div, cv, ctx: cv.getContext("2d"), k: W / PAGE_L, aDessiner: true, alloue: false};
       this.feuilles.set(p.id, f);
       this.dimensionner(f, W);
       this.installer(f);
-      this._io.observe(div);
+      this._io.observe(div); this._io2.observe(div);
     });
     this.el.querySelector(".cah-zoom").textContent = Math.round(this.zoom * 100) + " %";
     this.majToucher(); this.majNumero();
     if (!this._ro) { this._ro = new ResizeObserver(() => { clearTimeout(this._rz); this._rz = setTimeout(() => this.redimensionner(), 120); }); this._ro.observe(this.pagesZone); }
   }
+  /* taille affichée seulement ; la toile (pixels) est allouée au moment de peindre */
   dimensionner(f, W) {
-    const dpr = window.devicePixelRatio || 1, H = f.page.h * W / PAGE_L;
     f.k = W / PAGE_L;
-    f.cv.style.width = W + "px"; f.cv.style.height = H + "px";
-    f.cv.width = Math.round(W * dpr); f.cv.height = Math.round(H * dpr);
-    f.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    f.cv.style.width = W + "px"; f.cv.style.height = f.page.h * f.k + "px";
     f.aDessiner = true;
   }
+  allouer(f) {
+    const W = f.k * PAGE_L, H = f.page.h * f.k;
+    const dpr = Math.min(window.devicePixelRatio || 1, Math.sqrt(12e6 / (W * H)));   // au plus 12 Mpx par page
+    const w = Math.round(W * dpr), h = Math.round(H * dpr);
+    if (f.cv.width !== w || f.cv.height !== h) { f.cv.width = w; f.cv.height = h; }
+    f.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    f.alloue = true;
+  }
+  liberer(f) { if (!f.alloue) return; f.cv.width = 0; f.cv.height = 0; f.alloue = false; f.aDessiner = true; }
   redimensionner() {
     const W = this.largeurBase() * this.zoom;
     for (const f of this.feuilles.values()) if (Math.abs(f.k * PAGE_L - W) > 1) this.dimensionner(f, W);
-    for (const f of this.feuilles.values()) if (this.visible(f)) this.peindre(f.page.id);
+    for (const f of this.feuilles.values()) if (this.visible(f) && f.aDessiner) this.peindre(f.page.id);
   }
-  visible(f) { const r = f.div.getBoundingClientRect(), z = this.pagesZone.getBoundingClientRect(); return r.bottom > z.top - 600 && r.top < z.bottom + 600; }
-  setZoom(z) {
+  visible(f) { const r = f.div.getBoundingClientRect(), z = this.pagesZone.getBoundingClientRect(); return r.bottom > z.top - 500 && r.top < z.bottom + 500 && r.right > z.left - 300 && r.left < z.right + 300; }
+  /* point de l'écran → (page, coordonnées dans la page) ; sert à garder ce point sous les doigts en zoomant */
+  pointPage(x, y) {
+    let best = null, dmin = 1e9;
+    for (const f of this.feuilles.values()) {
+      const r = f.div.getBoundingClientRect(), d = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
+      if (d < dmin) { dmin = d; best = {f, px: (x - r.left) / f.k, py: (y - r.top) / f.k}; }
+      if (d === 0) break;
+    }
+    return best;
+  }
+  centreZone() { const z = this.pagesZone.getBoundingClientRect(); return {x: z.left + z.width / 2, y: z.top + z.height / 2}; }
+  setZoom(z, ref, cible) {
     const ancien = this.zoom;
     this.zoom = Math.max(.5, Math.min(3, Math.round(z * 100) / 100));
-    if (Math.abs(ancien - this.zoom) < .01) return;
-    const pz = this.pagesZone, ratio = this.zoom / ancien, cy = pz.scrollTop + pz.clientHeight / 2;
-    this.memo();
-    const W = this.largeurBase() * this.zoom;
-    for (const f of this.feuilles.values()) this.dimensionner(f, W);
-    pz.scrollTop = cy * ratio - pz.clientHeight / 2;
-    for (const f of this.feuilles.values()) if (this.visible(f)) this.peindre(f.page.id);
-    this.el.querySelector(".cah-zoom").textContent = Math.round(this.zoom * 100) + " %";
+    if (!ref) { const c = this.centreZone(); ref = this.pointPage(c.x, c.y); cible = c; }
+    if (Math.abs(ancien - this.zoom) >= .005) {
+      this.memo();
+      const W = this.largeurBase() * this.zoom;
+      for (const f of this.feuilles.values()) this.dimensionner(f, W);
+      this.el.querySelector(".cah-zoom").textContent = Math.round(this.zoom * 100) + " %";
+    }
+    if (ref) {
+      const pz = this.pagesZone, r = ref.f.div.getBoundingClientRect();
+      pz.scrollLeft += r.left + ref.px * ref.f.k - cible.x;
+      pz.scrollTop += r.top + ref.py * ref.f.k - cible.y;
+    }
+    for (const f of this.feuilles.values()) { if (this.visible(f)) { if (f.aDessiner) this.peindre(f.page.id); } else this.liberer(f); }
   }
   peindre(pid) {
     const f = this.feuilles.get(pid);
     if (!f) return;
+    if (!f.alloue || f.aDessiner) this.allouer(f);
     f.aDessiner = false;
     const W = f.k * PAGE_L, H = f.page.h * f.k;
     f.ctx.clearRect(0, 0, W, H);
@@ -689,22 +778,59 @@ class EditeurCahier {
       m.append(b);
     });
   }
-  allerPage(pid) { const f = this.feuilles.get(pid); if (f) this.pagesZone.scrollTo({top: f.div.offsetTop - 16, behavior: "smooth"}); }
+  allerPage(pid) {
+    const f = this.feuilles.get(pid);
+    if (!f) return;
+    const pz = this.pagesZone, r = f.div.getBoundingClientRect(), z = pz.getBoundingClientRect();
+    pz.scrollTo({top: pz.scrollTop + r.top - z.top - 16, behavior: "smooth"});
+  }
   menuPage() {
-    const p = this.pageCourante || this.n.pages[0], idx = this.n.pages.indexOf(p);
+    const p = this.pageCourante || this.n.pages[0], idx = this.n.pages.indexOf(p), app = this.pn.app;
     const m = new Modal("Pages", `Page ${idx + 1} sur ${this.n.pages.length}`);
     const modeles = el("div.modeles");
     for (const [v, t] of FONDS) modeles.append(el("button.modele", {type: "button", onclick: () => { m.fermer(); this.ajouterPage(idx + 1, v); }}, canvasPage(pageVide(v, "x"), this.n.papier, 74), el("span", {texte: t})));
-    const fondPage = el("div.rapides");
-    for (const [v, t] of FONDS) fondPage.append(petit(t, () => { this.snap(p); p.f = v; m.fermer(); this.peindre(p.id); this.dessinerMiniatures(); this.modifie(); }, p.f === v ? "tab_on" : "ghost"));
-    m.carte.append(etiquette("Ajouter une page après celle-ci"), modeles, etiquette("Fond de cette page"), fondPage);
+    for (const md of app.donnees.modeles || []) modeles.append(el("button.modele.perso", {type: "button", title: md.nom, onclick: () => { m.fermer(); this.ajouterPage(idx + 1, null, md); }},
+      canvasPage(Object.assign(pageVide(md.f, "x"), {h: md.h, traits: md.traits, textes: md.textes}), this.n.papier, 74), el("span", {texte: md.nom})));
+    m.carte.append(etiquette("Ajouter une page après celle-ci"), modeles);
+    if (!(p.f === "pdf" && p.pdf)) {
+      const fondPage = el("div.rapides");
+      for (const [v, t] of FONDS) fondPage.append(petit(t, () => { this.snap(p); p.f = v; m.fermer(); this.peindre(p.id); this.dessinerMiniatures(); this.modifie(); }, p.f === v ? "tab_on" : "ghost"));
+      m.carte.append(etiquette("Fond de cette page"), fondPage);
+    }
+    const gest = el("div.rapides");
+    gest.append(petit("Enregistrer cette page comme modèle", async () => {
+      const nom = await demanderTexte("Nouveau modèle", "Nom du modèle de page", "Modèle " + ((app.donnees.modeles || []).length + 1));
+      if (!nom) return;
+      app.donnees.modeles = (app.donnees.modeles || []).concat(normaliserModeles([{nom, f: p.f === "pdf" ? "blanc" : p.f, h: p.h, traits: clone(p.traits), textes: clone(p.textes || [])}]));
+      app.sauver(); m.fermer(); this.menuPage();
+    }, "ghost"), petit("Importer un modèle…", () => this.importerModele(() => { m.fermer(); this.menuPage(); }), "ghost"));
+    if ((app.donnees.modeles || []).length) gest.append(petit("Exporter tous les modèles", () => livrer([{nom: "Modeles de pages.json", blob: fichierModeles(app.donnees.modeles)}]), "ghost"));
+    m.carte.append(etiquette("Modèles de pages"), gest);
+    for (const md of app.donnees.modeles || []) {
+      m.carte.append(el("div.ligne-modele", null, el("span", {texte: md.nom}), el("span.espace"),
+        petit("Exporter", () => livrer([{nom: nomFichierSur(md.nom) + ".json", blob: fichierModeles([md])}]), "ghost"),
+        petit("Supprimer", async () => {
+          if (!await dialogue("Supprimer le modèle", `Supprimer le modèle « ${md.nom} » ?`, [["Annuler", false, "ghost"], ["Supprimer", true, "danger"]])) return;
+          app.donnees.modeles = app.donnees.modeles.filter(x => x !== md); app.sauver(); m.fermer(); this.menuPage();
+        }, "ghost")));
+    }
     m.barre([bouton("Supprimer la page", () => { m.fermer(); this.supprimerPage(p); }, "danger"), bouton("Dupliquer", () => { m.fermer(); const c = clone(p); c.id = newId(); this.n.pages.splice(idx + 1, 0, c); this.apresPages(c.id); })],
       [idx > 0 ? bouton("↑ Monter", () => { m.fermer(); this.n.pages.splice(idx, 1); this.n.pages.splice(idx - 1, 0, p); this.apresPages(p.id); }) : null,
         idx < this.n.pages.length - 1 ? bouton("↓ Descendre", () => { m.fermer(); this.n.pages.splice(idx, 1); this.n.pages.splice(idx + 1, 0, p); this.apresPages(p.id); }) : null,
         bouton("Fermer", () => m.fermer())].filter(Boolean));
     m.montrer();
   }
-  ajouterPage(i, f) { const p = pageVide(f || this.n.fond); this.n.pages.splice(i, 0, p); this.apresPages(p.id); }
+  importerModele(apres) {
+    const inp = el("input", {type: "file", accept: ".json,application/json", style: {display: "none"}});
+    inp.addEventListener("change", async () => {
+      const f = inp.files && inp.files[0]; inp.remove();
+      if (!f) return;
+      try { const nb = importerModeles(this.pn.app, JSON.parse(await f.text())); informer("Modèles", `${nb} modèle${nb > 1 ? "s" : ""} ajouté${nb > 1 ? "s" : ""}.`); if (apres) apres(); }
+      catch (e) { informer("Modèles", "Fichier illisible : " + (e && e.message || e)); }
+    });
+    document.body.append(inp); inp.click();
+  }
+  ajouterPage(i, f, modele) { const p = modele ? pageDepuisModele(modele) : pageVide(f || (this.n.fond === "pdf" ? "blanc" : this.n.fond)); this.n.pages.splice(i, 0, p); this.apresPages(p.id); }
   async supprimerPage(p) {
     if (this.n.pages.length <= 1) { informer("Pages", "Un cahier garde au moins une page."); return; }
     if ((p.traits.length || (p.textes || []).length) && !await dialogue("Supprimer la page", "Supprimer cette page et ce qui est écrit dessus ?", [["Annuler", false, "ghost"], ["Supprimer", true, "danger"]])) return;
@@ -736,12 +862,13 @@ class EditeurCahier {
   }
   appui(f, e) {
     if (e.pointerType === "touch" && !this.doigt) return;
+    if (this.pince) return;
     if (this.geste || this.texteOuvert) { if (this.texteOuvert) this.texteOuvert.blur(); return; }
     e.preventDefault();
     try { f.cv.setPointerCapture(e.pointerId); } catch (er) { /* */ }
     const [x, y, pr] = this.point(f, e);
     const outil = (e.button === 5 || (e.buttons & 32)) ? "gomme" : this.outil;
-    this.geste = {f, id: e.pointerId, outil, x0: x, y0: y};
+    this.geste = {f, id: e.pointerId, outil, x0: x, y0: y, type: e.pointerType};
     if (outil === "gomme") { this.snap(f.page); this.gommer(f, x, y); return; }
     if (outil === "texte") { this.geste = null; this.ouvrirTexte(f, x, y); return; }
     if (outil === "lasso") {
@@ -920,17 +1047,61 @@ class EditeurCahier {
 
   /* ----- pincer pour zoomer (deux doigts) */
   installerPinch() {
-    const z = this.pagesZone;
-    let d0 = 0, zoom0 = 1;
-    z.addEventListener("touchstart", (e) => { if (e.touches.length === 2) { d0 = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); zoom0 = this.zoom; } }, {passive: true});
+    const z = this.pagesZone, P = this.piste;
+    const milieu = (t) => ({x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2});
+    const ecart = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const debut = (m, d) => {
+      const r = P.getBoundingClientRect();
+      this.pince = {m0: m, d0: d, z0: this.zoom, s: 1, m, ref: this.pointPage(m.x, m.y)};
+      P.style.transformOrigin = `${m.x - r.left}px ${m.y - r.top}px`;
+      P.style.willChange = "transform";
+    };
+    const apercu = () => {
+      if (this._rafP) return;
+      this._rafP = requestAnimationFrame(() => {
+        this._rafP = 0;
+        const g = this.pince;
+        if (g) P.style.transform = `translate(${g.m.x - g.m0.x}px, ${g.m.y - g.m0.y}px) scale(${g.s})`;
+      });
+    };
+    const finir = () => {
+      const g = this.pince;
+      if (!g) return;
+      this.pince = null;
+      cancelAnimationFrame(this._rafP); this._rafP = 0;
+      P.style.transform = ""; P.style.willChange = "";
+      this.setZoom(g.z0 * g.s, g.ref, g.m);
+    };
+    z.addEventListener("touchstart", (e) => {
+      if (e.touches.length !== 2) return;
+      if (this.geste && this.geste.type === "pen") return;            // le crayon écrit : on ne zoome pas
+      if (this.geste) { const f = this.geste.f; this.geste = null; clearTimeout(this._live); if (f) this.peindre(f.page.id); }   // le 1er doigt n'écrit pas
+      e.preventDefault();
+      debut(milieu(e.touches), ecart(e.touches));
+    }, {passive: false});
     z.addEventListener("touchmove", (e) => {
-      if (e.touches.length !== 2 || !d0) return;
-      const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-      this._pz = zoom0 * d / d0;
-      z.style.setProperty("--pinch", String(this._pz / this.zoom));
-      z.classList.add("pince");
-    }, {passive: true});
-    z.addEventListener("touchend", () => { if (d0 && this._pz) { z.classList.remove("pince"); z.style.removeProperty("--pinch"); this.setZoom(this._pz); } d0 = 0; this._pz = 0; }, {passive: true});
+      const g = this.pince;
+      if (!g || e.touches.length < 2) return;
+      e.preventDefault();
+      g.m = milieu(e.touches);
+      g.s = Math.max(.5, Math.min(3, g.z0 * ecart(e.touches) / g.d0)) / g.z0;
+      apercu();
+    }, {passive: false});
+    const fin = (e) => { if (this.pince && e.touches.length < 2) finir(); };
+    z.addEventListener("touchend", fin, {passive: true});
+    z.addEventListener("touchcancel", fin, {passive: true});
+    for (const ev of ["gesturestart", "gesturechange"]) z.addEventListener(ev, (e) => e.preventDefault(), {passive: false});
+    // trackpad / souris : ctrl + molette (pincer sur un trackpad)
+    z.addEventListener("wheel", (e) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      const m = {x: e.clientX, y: e.clientY};
+      if (!this.pince) debut(m, 1);
+      const g = this.pince;
+      g.s = Math.max(.5, Math.min(3, g.z0 * g.s * Math.exp(-e.deltaY * .01))) / g.z0;
+      apercu();
+      clearTimeout(this._tw); this._tw = setTimeout(finir, 160);
+    }, {passive: false});
   }
 
   /* ----- enregistrement */
@@ -951,7 +1122,7 @@ class EditeurCahier {
   rafraichirDistant() {
     const n = this.pn.note(this.n.id);
     if (!n) return this.pn.bibliotheque();
-    const memesPages = n.pages.length === this.n.pages.length && n.pages.every((p, i) => p.id === this.n.pages[i].id && p.f === this.n.pages[i].f);
+    const memesPages = n.pages.length === this.n.pages.length && n.pages.every((p, i) => p.id === this.n.pages[i].id && p.f === this.n.pages[i].f && p.h === this.n.pages[i].h);
     this.n = n;
     this.titre.value = n.titre || "";
     if (!memesPages) { this.construirePages(); this.dessinerMiniatures(); return; }
