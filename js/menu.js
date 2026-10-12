@@ -4,7 +4,7 @@
 const MOIS_LONG = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 
 /* ---------- personnalisation du menu (réglage synchronisé « menu ») */
-const APPS_MENU = [["accueil", "Accueil"], ["horaire", "Horaire"], ["notes", "Notes"], ["resultats", "Résultats"], ["objets3d", "3D"], ["horloge", "Horloge"]];
+const APPS_MENU = [["accueil", "Accueil"], ["horaire", "Horaire"], ["notes", "Notes"], ["resultats", "Résultats"], ["objets3d", "3D"], ["transferts", "Transferts"], ["horloge", "Horloge"]];
 const SECTIONS_ACCUEIL = [["maintenant", "En ce moment"], ["applications", "Applications"], ["examen", "Prochain examen"],
   ["avenir", "À venir"], ["notes", "Notes récentes"], ["horaires", "Mes horaires"]];
 const SECTIONS_LARGES = ["maintenant", "applications"];
@@ -24,7 +24,7 @@ function nomApp(k) { return (APPS_MENU.find(a => a[0] === k) || ["", k])[1]; }
 
 function couleurApp(page) {
   const cats = (THEMES[T.REG_THEME] || THEMES.nuit).cats;
-  return {horaire: T.ACCENT, notes: cats.meca, resultats: cats.perso, horloge: cats.travail, objets3d: cats.graph, accueil: T.ACCENT}[page] || T.ACCENT;
+  return {horaire: T.ACCENT, notes: cats.meca, resultats: cats.perso, horloge: cats.travail, objets3d: cats.graph, transferts: cats.info, accueil: T.ACCENT}[page] || T.ACCENT;
 }
 /* icône d'une page ; en thème Minecraft, le sticker pixel-art correspondant */
 function iconePage(page, taille = 22) {
@@ -241,6 +241,7 @@ class PageAccueil {
       ["notes", "Notes", `${notes.length} note${notes.length > 1 ? "s" : ""}`, recente ? "Dernière : " + (recente.titre || "Sans titre") : "Écris ta première note", null],
       ["resultats", "Résultats", moy !== null ? fmtPct(moy) : "—", n ? `Moyenne sur ${n} cours` : "Entre tes premiers résultats", null],
       ["objets3d", "3D", (() => { const k = objets3D(app.donnees).length; return `${k} objet${k > 1 ? "s" : ""}`; })(), "Visionneuse STL et 3MF", null],
+      ["transferts", "Transferts", ficheTransferts(app.donnees).enLigne ? "PC joignable" : "PC hors ligne", "Fichiers entre le PC et l'iPad", null],
       ["horloge", "Horloge", res ? res.split("   ·   ")[0] : "Concentration", als.length ? `Prochaine alarme : ${fmt(als[0].heure)}` : "Pomodoro, minuterie, alarmes", null],
     ];
   }

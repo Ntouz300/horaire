@@ -780,3 +780,20 @@ body.glisse-en-cours, body.glisse-en-cours * { cursor: grabbing !important; }
 .liste-docs .doc-contenu { grid-template-columns: 1fr; grid-template-rows: none; transition: opacity .2s ease, width .24s ease; width: 64px; flex: none; }
 .liste-docs .doc.repliee .doc-contenu { width: 0; overflow: hidden; }
 @media (prefers-reduced-motion: reduce) { .doc-contenu, .doc-chev svg { transition: none; } }
+
+/* ---------- transferts PC ↔ iPad */
+.ecran-transferts { overflow-y: auto; -webkit-overflow-scrolling: touch; display: block; padding: max(26px, env(safe-area-inset-top)) max(34px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) 34px; }
+.tr-entete { margin-bottom: 18px; }
+.tr-connexion { padding: 20px; max-width: 760px; }
+.tr-etat { font: 700 calc(22px * var(--txt)) / 1.2 var(--f-cond); margin: 2px 0 4px; }
+.tr-etat.on { color: var(--accent); }
+.tr-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.tr-actions .btn, .tr-ligne a.btn { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+.tr-liste { padding: 6px 18px; max-width: 760px; }
+.tr-ligne { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--rule); }
+.tr-ligne:first-child { border-top: 0; }
+.tr-type { font-size: calc(11px * var(--txt)); background: var(--surface2); border-radius: 7px; padding: 4px 7px; min-width: 52px; text-align: center; }
+.tr-infos { flex: 1; min-width: 0; }
+.tr-nom { font-weight: 700; overflow-wrap: anywhere; }
+.tr-note { max-width: 760px; margin-top: 18px; }
+@media (max-width: 700px) { .ecran-transferts { padding-left: 16px; padding-right: 16px; } }
