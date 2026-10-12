@@ -46,7 +46,7 @@ const ACCENTS = ["#5b9bff", "#3cc4c9", "#4fd1a1", "#f0a541", "#ff7a8d", "#a78bfa
 const DEFAUT_REGLAGES = {theme: "nuit", accent: "", forme: 2, texte: 100, h_debut: 7, h_fin: 22, notes_blocs: true,
   plein_ecran: true, horloge: true, secondes: true, son: true, rappel_cours: 0,
   prenom: "Antoine", objectif: 70};
-const REG_LOCAUX = ["vue", "plein_ecran", "texte", "horaire", "page"];
+const REG_LOCAUX = ["vue", "plein_ecran", "texte", "horaire", "page", "vue3d"];
 const CATS_BASE = {
   info: ["Informatique (6GEN248)", "Informatique", true], graph: ["Sciences graphiques (6DDG100)", "Sc. graphiques", true],
   meca: ["Mécanique (6GMC108)", "Mécanique", true], ethique: ["Ingénierie et éthique (6GIN275)", "Éthique", true],
@@ -266,6 +266,7 @@ function normaliserFichiers(l) {
     vus.add(f.id);
     out.push({id: f.id, nom: String(f.nom || "Document.pdf"), taille: Number(f.taille) || 0, n: Number(f.n) || 0,
       pages: Array.isArray(f.pages) ? f.pages.filter(x => Array.isArray(x)).map(x => [Number(x[0]) || 612, Number(x[1]) || 792]) : [], ajout: String(f.ajout || "")});
+    for (const k of ["type", "format", "triangles", "dims", "local", "apercu"]) if (f[k] !== undefined && f[k] !== null && f[k] !== "") out[out.length - 1][k] = f[k];   // fichiers 3D (STL, 3MF)
   }
   return out;
 }

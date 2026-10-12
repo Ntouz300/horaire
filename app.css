@@ -688,3 +688,35 @@ input[type="time"].saisie, input[type="date"].saisie { min-height: 42px; }
 .modele.perso span { max-width: 84px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ligne-modele { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--rule); }
 .ligne-modele > span:first-child { font-weight: 600; }
+
+/* ---------- onglet 3D (STL, 3MF) */
+.ecran-3d { overflow-y: auto; -webkit-overflow-scrolling: touch; display: block; padding: max(26px, env(safe-area-inset-top)) max(34px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) 34px; }
+.ecran-3d.o3-ouvert { display: flex; flex-direction: column; overflow: hidden; gap: 10px; padding: max(12px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) 14px; }
+.o3-entete { margin-bottom: 18px; }
+.o3-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.o3-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 16px; padding-bottom: 30px; }
+.o3-carte { position: relative; text-align: left; padding: 12px; cursor: pointer; color: var(--ink); display: flex; flex-direction: column; gap: 4px; min-width: 0; transition: border-color .15s, transform .12s; }
+.o3-carte:hover { border-color: var(--accent); }
+.o3-carte:active { transform: scale(.98); }
+.o3-apercu { aspect-ratio: 4 / 3; max-width: 100%; border-radius: calc(14px * var(--rad)); background: radial-gradient(circle at 50% 40%, var(--surface3), var(--surface2)); display: flex; align-items: center; justify-content: center; color: var(--muted); overflow: hidden; margin-bottom: 6px; }
+.o3-apercu img { width: 100%; height: 100%; object-fit: contain; }
+.o3-nom { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.o3-plus { position: absolute; top: 18px; right: 18px; width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--rule); background: var(--surface); color: var(--ink); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.o3-badge { align-self: flex-start; margin-top: 4px; font-size: calc(11px * var(--txt)); padding: 2px 8px; border-radius: 99px; background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
+.o3-vide { padding: 34px; text-align: center; max-width: 520px; margin: 30px auto; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.o3-vide-ico { color: var(--accent); }
+.o3-barre { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.o3-barre .espace { flex: 1; }
+.o3-titre { font: 700 calc(20px * var(--txt)) / 1.2 var(--f-cond); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; max-width: 40vw; }
+.o3-couleurs { display: flex; gap: 6px; }
+.o3-pastille { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--rule); cursor: pointer; padding: 0; }
+.o3-pastille.on { border-color: var(--ink); box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+.o3-scene { position: relative; flex: 1; min-height: 0; border-radius: calc(18px * var(--rad)); border: 1px solid var(--rule); overflow: hidden; background: radial-gradient(circle at 50% 35%, var(--surface2), var(--bg)); }
+.o3-canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; cursor: grab; }
+.o3-canvas:active { cursor: grabbing; }
+.o3-etat { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); padding: 30px; text-align: center; }
+.o3-etat.erreur { color: var(--danger); }
+.o3-aide { position: absolute; left: 12px; bottom: 10px; color: var(--muted); pointer-events: none; }
+.o3-info { color: var(--muted); text-align: center; }
+.o3-opts { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+@media (max-width: 760px) { .o3-aide { display: none; } .o3-titre { max-width: 60vw; } }

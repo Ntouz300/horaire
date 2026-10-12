@@ -63,11 +63,11 @@ const Fichiers = {
       const local = await this.lireLocal(id);
       if (local) return local;
       const url = this.urlDistant(id);
-      if (!url) throw new Error("Ce PDF est sur l'autre appareil : active la synchronisation pour le recevoir.");
+      if (!url) throw new Error("Ce fichier est sur l'autre appareil : active la synchronisation pour le recevoir.");
       const r = await fetch(url);
       if (!r.ok) throw new Error("Téléchargement impossible (" + r.status + ").");
       const j = await r.json();
-      if (!j) throw new Error("Ce PDF n'est pas encore arrivé : ouvre l'appli sur l'appareil qui l'a importé.");
+      if (!j) throw new Error("Ce fichier n'est pas encore arrivé : ouvre l'appli sur l'appareil qui l'a importé.");
       const morceaux = Array.isArray(j) ? j : Object.keys(j).sort((a, b) => a - b).map(k => j[k]);
       const u8 = depuisBase64(morceaux.join(""));
       await this.ecrireLocal(id, u8);

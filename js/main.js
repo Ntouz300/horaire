@@ -167,7 +167,7 @@ class App {
     document.title = APP_TITLE;
     this.rail = new Rail(this);
     const H = el("div.ecran.ecran-horaire");
-    this.ecrans = {horaire: {el: H}, accueil: new PageAccueil(this), notes: new PageNotes(this), resultats: new PageResultats(this)};
+    this.ecrans = {horaire: {el: H}, accueil: new PageAccueil(this), notes: new PageNotes(this), resultats: new PageResultats(this), objets3d: new Page3D(this)};
     zone.append(el("div.coque", null, this.rail.el, el("div.pages", null, ...Object.values(this.ecrans).map(e => e.el))));
     this.construireHoraire(H);
     this.aller(this.page);
