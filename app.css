@@ -562,6 +562,21 @@ input[type="time"].saisie, input[type="date"].saisie { min-height: 42px; }
 .nb-docs { flex: 1; min-height: 0; overflow: auto; -webkit-overflow-scrolling: touch; display: grid; grid-template-columns: repeat(auto-fill, minmax(166px, 1fr));
   gap: 22px 18px; align-content: start; padding: 4px 4px 20px; }
 .doc { position: relative; cursor: pointer; display: flex; flex-direction: column; gap: 8px; }
+/* sélection de plusieurs documents */
+.nb-selbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; margin: -6px 0 14px; background: var(--surface2); }
+.nb-selbar .espace { flex: 1; }
+.nb-selbar .btn:disabled { opacity: .4; pointer-events: none; }
+.nb-selcompte { margin-right: 4px; }
+.nb-docs.en-selection .doc-plus { display: none; }
+.doc-coche { position: absolute; top: 8px; left: 8px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; z-index: 2;
+  border: 2px solid #fff; background: rgba(0, 0, 0, .28); color: transparent; box-shadow: 0 1px 4px rgba(0, 0, 0, .35); pointer-events: none; }
+.doc.choisi .doc-coche { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.doc.choisi .doc-vignette { box-shadow: 0 0 0 3px var(--accent), 0 6px 18px rgba(0, 0, 0, .28); }
+.liste-docs .doc.choisi { background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: calc(10px * var(--rad)); }
+.liste-docs .doc-coche { top: 50%; transform: translateY(-50%); left: auto; right: 10px; }
+.exp-liste { margin: 8px 0 0; padding-left: 18px; }
+body.tel .nb-selbar { gap: 6px; }
+body.tel .nb-selbar .btn-ico span:last-child { display: none; }
 .doc-vignette { aspect-ratio: 1 / 1.414; border-radius: calc(10px * var(--rad)); overflow: hidden; box-shadow: 0 6px 18px rgba(0, 0, 0, .28), 0 0 0 1px var(--rule);
   display: flex; align-items: flex-start; justify-content: center; background: var(--surface2); transition: transform .15s, box-shadow .15s; }
 .doc:hover .doc-vignette { transform: translateY(-3px); box-shadow: 0 12px 26px rgba(0, 0, 0, .34), 0 0 0 1px var(--line2); }
@@ -1037,6 +1052,9 @@ body.tel .nb-rech { order: 3; }
 body.tel .nb-tri { order: 4; }
 body.tel .nb-vue { order: 5; }
 body.tel .nb-importer { order: 6; }
+body.tel .nb-selectionner { order: 7; }
+body.tel .nb-coller { order: 8; }
+body.tel .nb-vocaux { order: 9; }
 /* horloge : onglets qui défilent */
 body.tel .carte-modale.horloge .onglets { flex-wrap: wrap; gap: 4px; }
 body.tel .carte-modale.horloge .onglets .btn { padding: 8px 11px; }

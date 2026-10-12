@@ -173,6 +173,22 @@ function demanderTexte(titre, etiq, valeur) {
   });
 }
 
+/* petite fenêtre « choisir dans une liste » ; répond la valeur choisie, ou null si annulée */
+function choisirOption(titre, sousTitre, etiq, options, choix) {
+  return new Promise((res) => {
+    const m = new Modal(titre, sousTitre, {classe: "dialogue"});
+    const s = liste(options, choix);
+    m.carte.append(champ(etiq, s));
+    let fait = false;
+    const finir = (v) => { if (!fait) { fait = true; res(v); } };
+    m.valider = () => { finir(s.value); m.fermer(); };
+    m.barre([], [bouton("Annuler", () => { finir(null); m.fermer(); }, "ghost"), bouton("OK", () => m.valider(), "primary")]);
+    const vieux = m.fermer.bind(m);
+    m.fermer = () => { vieux(); finir(null); };
+    m.montrer();
+  });
+}
+
 /* ---------- notifications (en bas à droite, avec son) */
 const Son = {
   ctx: null,

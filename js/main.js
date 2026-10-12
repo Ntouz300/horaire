@@ -553,6 +553,10 @@ class App {
   clavier(e) {
     const top = Pile[Pile.length - 1];
     if (top) { if (top.touche(e)) e.preventDefault(); return; }
+    if (this.page === "notes" && this.interfacePrete && !this.saisieActive() && this.ecrans.notes && !this.ecrans.notes.doc) {
+      if (this.ecrans.notes.clavier(e)) e.preventDefault();
+      return;
+    }
     if (this.saisieActive() || !this.interfacePrete || this.page !== "horaire") return;
     const mod = e.ctrlKey || e.metaKey;
     const k = e.key.toLowerCase();

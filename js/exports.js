@@ -285,3 +285,52 @@ class ExportNote extends Modal {
         bouton("Partager / Enregistrer", async () => { const r = await livrer(this.fichiers); if (r !== "annule") this.fermer(); }, "primary"))));
   }
 }
+
+/* exporter plusieurs documents d'un coup : un fichier par document, puis la feuille de partage (Fichiers, AirDrop, Mail…) */
+class ExportPlusieurs extends Modal {
+  constructor(notes) {
+    super("Exporter", `${notes.length} document${notes.length > 1 ? "s" : ""}`);
+    this.notes = notes; this.format = "pdf"; this.fichiers = null;
+    this.zone = el("div"); this.carte.append(this.zone);
+    this.dessiner();
+  }
+  dessiner() {
+    const z = this.zone; z.innerHTML = "";
+    const f = el("div.rapides");
+    for (const [v, t] of [["pdf", "PDF"], ["md", "Markdown (.md)"], ["txt", "Texte (.txt)"]]) f.append(petit(t, () => { this.format = v; this.dessiner(); }, this.format === v ? "tab_on" : "ghost"));
+    const aide = {pdf: "Un PDF par document : l'écriture à la main en vectoriel, les PDF importés en fond, toutes les pages.",
+      md: "Un fichier .md par document : le texte tapé (l'écriture à la main n'est pas convertie en texte).", txt: "Un fichier .txt par document : le texte tapé, sans mise en forme."}[this.format];
+    z.append(etiquette("Format"), f, el("p.petit.muted", {texte: aide}),
+      el("ul.petit.muted.exp-liste", null, this.notes.slice(0, 6).map(n => el("li", {texte: n.titre || "Sans titre"})), this.notes.length > 6 ? el("li", {texte: `… et ${this.notes.length - 6} autre${this.notes.length > 7 ? "s" : ""}`}) : null));
+    this.etat = el("div.petit.muted");
+    z.append(this.etat, el("div.barre-actions", null, el("div.g"), el("div.d", null, bouton("Annuler", () => this.fermer()), bouton("Préparer", () => this.valider(), "primary"))));
+  }
+  async valider() {
+    if (this.occupe) return;
+    this.occupe = true;
+    const tous = [], vus = new Set(), erreurs = [];
+    for (let i = 0; i < this.notes.length; i++) {
+      const n = this.notes[i];
+      this.etat.textContent = `Préparation ${i + 1} / ${this.notes.length} — ${n.titre || "Sans titre"}`;
+      try {
+        for (const fi of await construireExport(n, this.format, n.type === "cahier" ? n.pages : [])) {
+          const m = /^(.*?)(\.[a-z0-9]+)$/i.exec(fi.nom) || [fi.nom, fi.nom, ""];
+          let nom = fi.nom, k = 2;
+          while (vus.has(nom.toLowerCase())) nom = `${m[1]} (${k++})${m[2]}`;
+          vus.add(nom.toLowerCase());
+          tous.push({nom, blob: fi.blob});
+        }
+      } catch (e) { erreurs.push(`${n.titre || "Sans titre"} : ${e && e.message || e}`); }
+    }
+    this.occupe = false;
+    this.fichiers = tous;
+    const z = this.zone; z.innerHTML = "";
+    if (!tous.length) { z.append(el("p", {texte: "Rien n'a pu être exporté."}), el("p.petit.muted", {texte: erreurs.join("\n")}), el("div.barre-actions", null, el("div.g"), el("div.d", null, bouton("Fermer", () => this.fermer())))); return; }
+    const tot = tous.reduce((a, f) => a + f.blob.size, 0);
+    z.append(el("p", {texte: `${tous.length} fichier${tous.length > 1 ? "s prêts" : " prêt"} (${tailleLisible(tot)}).`}),
+      erreurs.length ? el("p.petit.erreur", {texte: "Problèmes :\n" + erreurs.slice(0, 6).join("\n")}) : null,
+      el("p.petit.muted", {texte: "Choisis « Enregistrer dans Fichiers », AirDrop, Mail… dans la feuille de partage."}),
+      el("div.barre-actions", null, el("div.g"), el("div.d", null, bouton("Fermer", () => this.fermer()),
+        bouton("Partager / Enregistrer", async () => { const r = await livrer(this.fichiers); if (r !== "annule") this.fermer(); }, "primary"))));
+  }
+}

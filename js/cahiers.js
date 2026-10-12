@@ -399,6 +399,9 @@ class PageNotes {
     this.sale = false;
     this.el = el("div.ecran.ecran-notes2");
     this.ed = null;
+    this.modeSel = false;      // sélection de plusieurs documents
+    this.selection = new Set();
+    this.ancre = null;         // dernier document coché (Maj + clic : sélectionner une plage)
   }
   memoUI() { Stock.ecrire("horaire_notes_ui", {tri: this.tri, vue: this.vue}); }
   note(id) { return this.app.donnees.notes.find(n => n.id === (id || this.doc)) || null; }
@@ -426,12 +429,153 @@ class PageNotes {
     this.titreFiltre = el("h1.page-h1");
     main.append(el("header.nb-tete", null, this.titreFiltre, el("span.espace"),
       el("div.nt-recherche-zone.nb-rech", null, icone("recherche", 18), this.recherche), tri, vue,
+      cls(boutonIcone("coche", this.modeSel ? "Terminé" : "Sélectionner", () => this.basculerSelection(), this.modeSel ? "primary" : "ghost"), "nb-selectionner"),
+      (this.app.presseNotes || []).length ? cls(boutonIcone("coller", `Coller (${this.app.presseNotes.length})`, () => this.coller(), "ghost"), "nb-coller") : null,
       cls(boutonIcone("exporter", "Importer", () => this.importer(), "ghost"), "nb-importer"),
       cls(this.boutonVocauxDossier(), "nb-vocaux"),
       cls(boutonIcone("plus", "Nouveau", () => new NouveauDocument(this).montrer(), "primary"), "nb-nouveau")));
-    this.zoneDocs = el("div.nb-docs" + (this.vue === "liste" ? ".liste-docs" : ""));
+    this.barreSel = this.modeSel ? el("div.carte.nb-selbar") : null;
+    if (this.barreSel) main.append(this.barreSel);
+    this.zoneDocs = el("div.nb-docs" + (this.vue === "liste" ? ".liste-docs" : "") + (this.modeSel ? ".en-selection" : ""));
     main.append(this.zoneDocs);
     this.grille();
+  }
+
+  /* ----- sélection de plusieurs documents (supprimer, dupliquer, copier, déplacer, matière, favori, exporter) */
+  basculerSelection(actif) {
+    this.modeSel = actif === undefined ? !this.modeSel : actif;
+    if (!this.modeSel) { this.selection.clear(); this.ancre = null; }
+    this.bibliotheque();
+  }
+  selectionnes() { return this.filtrees().filter(n => this.selection.has(n.id)); }
+  clicCarte(n, e) {
+    const plage = e && e.shiftKey && this.ancre, ajout = e && (e.metaKey || e.ctrlKey);
+    if (!this.modeSel && !plage && !ajout) return this.ouvrir(n.id);
+    if (plage) {
+      const docs = this.filtrees(), a = docs.findIndex(x => x.id === this.ancre), b = docs.findIndex(x => x.id === n.id);
+      if (a >= 0 && b >= 0) for (const x of docs.slice(Math.min(a, b), Math.max(a, b) + 1)) this.selection.add(x.id);
+    } else if (this.selection.has(n.id)) this.selection.delete(n.id);
+    else this.selection.add(n.id);
+    this.ancre = n.id;
+    if (!this.modeSel) { this.modeSel = true; this.bibliotheque(); return; }
+    this.majSelection();
+  }
+  majSelection() {
+    for (const [id, c] of this.cartes || []) {
+      const on = this.selection.has(id);
+      c.classList.toggle("choisi", on);
+      c.setAttribute("aria-selected", String(on));
+    }
+    const b = this.barreSel;
+    if (!b) return;
+    const l = this.selectionnes(), k = l.length, docs = this.filtrees(), tous = docs.length > 0 && k === docs.length;
+    const fav = k && l.every(n => n.epingle);
+    b.innerHTML = "";
+    const act = (ico, texte, f, style = "ghost") => { const x = boutonIcone(ico, texte, f, style); x.disabled = !k; return x; };
+    b.append(el("b.nb-selcompte", {texte: k ? `${k} sélectionné${k > 1 ? "s" : ""}` : "Touche des documents pour les sélectionner"}),
+      petit(tous ? "Tout désélectionner" : "Tout sélectionner", () => this.toutSelectionner(!tous), "ghost"),
+      el("span.espace"),
+      act("page-plus", "Dupliquer", () => this.dupliquerSelection()),
+      act("pages", "Copier", () => this.copierSelection()),
+      act("dossier", "Déplacer…", () => this.deplacerSelection()),
+      act("livre", "Matière…", () => this.matiereSelection()),
+      act("etoile", fav ? "Retirer des favoris" : "Favori", () => this.favoriSelection(!fav)),
+      act("exporter", "Exporter…", () => this.exporterSelection()),
+      act("corbeille", "Supprimer", () => this.supprimerSelection(), "danger"));
+  }
+  toutSelectionner(oui) {
+    this.selection.clear();
+    if (oui) for (const n of this.filtrees()) this.selection.add(n.id);
+    this.majSelection();
+  }
+  finAction(msg) {
+    this.modeSel = false; this.selection.clear(); this.ancre = null;
+    this.app.sauver(); this.bibliotheque();
+    if (msg) Notifs.bulle(msg);
+  }
+  async supprimerSelection() {
+    const l = this.selectionnes();
+    if (!l.length) return;
+    const noms = l.slice(0, 5).map(n => "• " + (n.titre || "Sans titre")).join("\n") + (l.length > 5 ? `\n… et ${l.length - 5} autre${l.length > 6 ? "s" : ""}` : "");
+    const ok = await dialogue("Supprimer", `Supprimer ${l.length > 1 ? "ces " + l.length + " documents" : "ce document"} ?\n\n${noms}`,
+      [["Annuler", false, "ghost"], ["Supprimer", true, "danger"]]);
+    if (!ok) return;
+    for (const n of l) this.retirer(n);
+    this.finAction(`${l.length} document${l.length > 1 ? "s supprimés" : " supprimé"}`);
+  }
+  dupliquerSelection() {
+    const l = this.selectionnes();
+    for (const n of l) this.copieDe(n);
+    this.finAction(`${l.length} document${l.length > 1 ? "s dupliqués" : " dupliqué"}`);
+  }
+  copierSelection() {
+    const l = this.selectionnes();
+    if (!l.length) return;
+    this.app.presseNotes = l.map(n => clone(n));
+    this.finAction(`${l.length} document${l.length > 1 ? "s copiés" : " copié"} : ouvre un dossier, puis « Coller »`);
+  }
+  /* colle les documents copiés dans le dossier affiché (ou hors dossier) : de nouveaux documents, indépendants des originaux */
+  coller() {
+    const l = this.app.presseNotes || [];
+    if (!l.length) return;
+    const dossier = this.filtre.startsWith("d:") ? this.filtre.slice(2) : "";
+    const notes = this.app.donnees.notes, ajout = [];
+    for (const m of l) {
+      const c = clone(m);
+      c.id = newId(); c.dossier = dossier; c.maj = nowIsoMinutes();
+      for (const p of c.pages || []) p.id = newId();
+      if (notes.some(x => (x.dossier || "") === dossier && (x.titre || "") === (c.titre || ""))) c.titre = (c.titre || "Sans titre") + " (copie)";
+      ajout.push(c);
+    }
+    notes.unshift(...ajout);
+    this.finAction(`${ajout.length} document${ajout.length > 1 ? "s collés" : " collé"}`);
+  }
+  async deplacerSelection() {
+    const l = this.selectionnes();
+    if (!l.length) return;
+    const ds = (this.app.donnees.dossiers || []).slice().sort((x, y) => x.nom.localeCompare(y.nom, "fr"));
+    const commun = l.every(n => n.dossier === l[0].dossier) ? l[0].dossier || "" : null;
+    const v = await choisirOption("Déplacer", `${l.length} document${l.length > 1 ? "s" : ""}`, "Vers le dossier",
+      [["", "Aucun dossier"]].concat(ds.map(d => [d.id, d.nom])), commun ?? "");
+    if (v === null) return;
+    for (const n of l) n.dossier = v;
+    this.finAction(`${l.length} document${l.length > 1 ? "s déplacés" : " déplacé"}`);
+  }
+  async matiereSelection() {
+    const l = this.selectionnes();
+    if (!l.length) return;
+    const commun = l.every(n => n.cours === l[0].cours) && CATS[l[0].cours] ? l[0].cours : "";
+    const v = await choisirOption("Matière", `${l.length} document${l.length > 1 ? "s" : ""}`, "Matière",
+      [["", "Sans matière"]].concat(Object.keys(CATS).map(k => [k, CATS[k][1]])), commun);
+    if (v === null) return;
+    for (const n of l) n.cours = v;
+    this.finAction(`Matière changée pour ${l.length} document${l.length > 1 ? "s" : ""}`);
+  }
+  favoriSelection(oui) {
+    const l = this.selectionnes();
+    for (const n of l) n.epingle = oui;
+    this.finAction(oui ? `${l.length} document${l.length > 1 ? "s ajoutés" : " ajouté"} aux favoris` : `${l.length} document${l.length > 1 ? "s retirés" : " retiré"} des favoris`);
+  }
+  exporterSelection() {
+    const l = this.selectionnes();
+    if (l.length) new ExportPlusieurs(l).montrer();
+  }
+  /* glisser plusieurs documents sélectionnés sur un dossier */
+  rangerSelection(cle) {
+    const l = this.selectionnes();
+    if (cle === "racine") for (const n of l) n.dossier = ""; else if (cle && cle.startsWith("d:")) for (const n of l) n.dossier = cle.slice(2); else return;
+    this.finAction(`${l.length} document${l.length > 1 ? "s rangés" : " rangé"}`);
+  }
+  /* clavier (iPad avec clavier, souris) : ⌘/Ctrl + A, C, V, D ; Suppr ; Échap */
+  clavier(e) {
+    const mod = e.ctrlKey || e.metaKey, k = (e.key || "").toLowerCase();
+    if (mod && k === "a") { this.selection.clear(); for (const n of this.filtrees()) this.selection.add(n.id); if (!this.modeSel) { this.modeSel = true; this.bibliotheque(); } else this.majSelection(); return true; }
+    if (mod && k === "c" && this.modeSel && this.selection.size) { this.copierSelection(); return true; }
+    if (mod && k === "v" && (this.app.presseNotes || []).length) { this.coller(); return true; }
+    if (mod && k === "d" && this.modeSel && this.selection.size) { this.dupliquerSelection(); return true; }
+    if (!mod && (k === "delete" || k === "backspace") && this.modeSel && this.selection.size) { this.supprimerSelection(); return true; }
+    if (!mod && k === "escape" && this.modeSel) { this.basculerSelection(false); return true; }
+    return false;
   }
   /* messages vocaux du dossier affiché (ou tous les messages hors dossier) */
   boutonVocauxDossier() {
@@ -510,6 +654,9 @@ class PageNotes {
       : f.startsWith("m:") ? (CATS[f.slice(2)] || ["", "Matière"])[1] : "Tous les documents";
     const z = this.zoneDocs; z.innerHTML = "";
     const docs = this.filtrees();
+    const visibles = new Set(docs.map(n => n.id));
+    for (const id of [...this.selection]) if (!visibles.has(id)) this.selection.delete(id);
+    this.cartes = new Map();
     if (!docs.length) {
       z.append(el("div.nt-vide", null, el("span.badge.grand", {style: {"--c": couleurApp("notes")}}, iconePage("notes", 40)),
         el("h2", {texte: this.q ? "Aucun résultat" : "Aucun document ici"}),
@@ -518,6 +665,7 @@ class PageNotes {
       return;
     }
     for (const n of docs) z.append(this.carte(n));
+    this.majSelection();
   }
   carte(n) {
     const col = CATS[n.cours] ? couleur(n.cours) : T.MUTED;
@@ -540,12 +688,15 @@ class PageNotes {
     chev.addEventListener("click", (e) => { e.stopPropagation(); e.preventDefault(); this.basculerRepli(n, c, chev); });
     chev.addEventListener("contextmenu", (e) => { e.stopPropagation(); e.preventDefault(); });
     const surIpad = IPHONE && n.type === "cahier";       // cahier manuscrit : visible sur iPhone, mais il s'ouvre sur l'iPad ou le PC
-    const c = el("div.doc" + (repliee ? ".repliee" : "") + (surIpad ? ".sur-ipad" : ""), {onclick: () => this.ouvrir(n.id)}, el("div.doc-contenu", null, vignette),
+    const c = el("div.doc" + (repliee ? ".repliee" : "") + (surIpad ? ".sur-ipad" : ""), {onclick: (e) => this.clicCarte(n, e)}, el("div.doc-contenu", null, vignette),
       el("div.doc-info", null,
         el("div.doc-titre", null, chev, n.epingle ? el("span.nt-epi", null, icone("etoile", 13)) : null, el("b", {texte: n.titre || "Sans titre"})),
         el("div.doc-sous", null, pastille(col, 7), el("span", {texte: [n.type === "cahier" ? `${n.pages.length} page${n.pages.length > 1 ? "s" : ""}` : "Texte", d ? dateCourte(d) : "", surIpad ? "iPad / PC" : ""].filter(Boolean).join(" · ")}))),
       plus);
-    glissable(c, () => n.titre || "Sans titre", (cle) => this.rangerNote(n, cle));
+    if (this.modeSel) c.append(el("span.doc-coche", {"aria-hidden": "true"}, icone("coche", 16)));
+    this.cartes.set(n.id, c);
+    const groupe = () => this.modeSel && this.selection.has(n.id) && this.selection.size > 1;
+    glissable(c, () => groupe() ? `${this.selection.size} documents` : n.titre || "Sans titre", (cle) => groupe() ? this.rangerSelection(cle) : this.rangerNote(n, cle));
     c.addEventListener("contextmenu", (e) => { e.preventDefault(); if (!c._glisse && !document.body.classList.contains("glisse-en-cours")) new InfosDocument(this, n).montrer(); });
     return c;
   }
@@ -673,27 +824,34 @@ class PageNotes {
   supprimer(n) {
     return dialogue("Supprimer", `Supprimer « ${n.titre || "Sans titre"} » ?`, [["Annuler", false, "ghost"], ["Supprimer", true, "danger"]]).then(ok => {
       if (!ok) return false;
-      const l = this.app.donnees.notes, i = l.indexOf(n);
-      this.app.sync.marquerSuppression(n.id);                 // suppression voulue : elle part vers le serveur
-      if (i >= 0) l.splice(i, 1);
-      const ids = new Set((n.pages || []).filter(p => p.pdf).map(p => p.pdf[0]));
-      for (const id of ids) {
-        if (l.some(x => (x.pages || []).some(p => p.pdf && p.pdf[0] === id))) continue;
-        this.app.donnees.fichiers = (this.app.donnees.fichiers || []).filter(f => f.id !== id);
-        Fichiers.supprimer(id);
-      }
-      if (this.doc === n.id) { this.ed = null; this.doc = null; this.sale = false; }
+      this.retirer(n);
       this.app.sauver();
       this.bibliotheque();
       return true;
     });
   }
-  dupliquer(n) {
-    const c = clone(n); c.id = newId(); c.titre = (n.titre || "Sans titre") + " (copie)"; c.maj = nowIsoMinutes();
-    for (const p of c.pages) p.id = newId();
-    const l = this.app.donnees.notes; l.splice(l.indexOf(n) + 1, 0, c);
-    this.app.sauver(); this.bibliotheque();
+  /* retire un document (sans demander) ; le PDF d'origine part s'il ne sert plus, ni à un document ni à des documents copiés */
+  retirer(n) {
+    const l = this.app.donnees.notes, i = l.indexOf(n);
+    this.app.sync.marquerSuppression(n.id);                 // suppression voulue : elle part vers le serveur
+    if (i >= 0) l.splice(i, 1);
+    const ids = new Set((n.pages || []).filter(p => p.pdf).map(p => p.pdf[0]));
+    const encore = l.concat(this.app.presseNotes || []);
+    for (const id of ids) {
+      if (encore.some(x => (x.pages || []).some(p => p.pdf && p.pdf[0] === id))) continue;
+      this.app.donnees.fichiers = (this.app.donnees.fichiers || []).filter(f => f.id !== id);
+      Fichiers.supprimer(id);
+    }
+    this.selection.delete(n.id);
+    if (this.doc === n.id) { this.ed = null; this.doc = null; this.sale = false; }
   }
+  copieDe(n) {
+    const c = clone(n); c.id = newId(); c.titre = (n.titre || "Sans titre") + " (copie)"; c.maj = nowIsoMinutes();
+    for (const p of c.pages || []) p.id = newId();
+    const l = this.app.donnees.notes; l.splice(l.indexOf(n) + 1, 0, c);
+    return c;
+  }
+  dupliquer(n) { this.copieDe(n); this.app.sauver(); this.bibliotheque(); }
 }
 
 /* ---------- nouveau document / infos / dossier */
