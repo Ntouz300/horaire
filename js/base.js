@@ -34,6 +34,10 @@ const THEMES = {
   arcenciel: {nom: "Arc-en-ciel", sombre: false, BG: "#efe6ff", SURFACE: "#ffffff", SURFACE2: "#fdf1ff", SURFACE3: "#ffe3f3", INK: "#2a1050", MUTED: "#7a5ea8", RULE: "#e6d4ff", GRID: "#f1e6ff", TODAY_BG: "#fff2a8", ACCENT: "#ff2d95", DANGER: "#e0102f", TINT: .5, SCROLL: "#d9b8ff", LINE2: "#c9a8f5", cats: _CATS_ARC},
   obsidienne: {nom: "Obsidienne", sombre: true, BG: "#050506", SURFACE: "#0e0e11", SURFACE2: "#16161b", SURFACE3: "#202027", INK: "#f1ede4", MUTED: "#8f8b82", RULE: "#1c1c22", GRID: "#121216", TODAY_BG: "#18160f", ACCENT: "#d6b36a", DANGER: "#ff7a7a", TINT: .8, SCROLL: "#2b2b33", LINE2: "#34343d", cats: _CATS_OBS},
   minecraft: {nom: "Minecraft", sombre: true, mono: true, bloc: true, BG: "#1b140e", SURFACE: "#2a1f15", SURFACE2: "#37291b", SURFACE3: "#4a3824", INK: "#f4ecd8", MUTED: "#b3a283", RULE: "#4a3824", GRID: "#241b12", TODAY_BG: "#26391a", ACCENT: "#5fbf3a", DANGER: "#ff5555", TINT: .72, SCROLL: "#5a4630", LINE2: "#5d472e", cats: _CATS_MC},
+  hollow: {"nom": "Hollow Knight", "sombre": true, "titres": "serif", "BG": "#0b0f17", "SURFACE": "#121826", "SURFACE2": "#1a2234", "SURFACE3": "#253048", "INK": "#e9ecf2", "MUTED": "#8b95ab", "RULE": "#212a3d", "GRID": "#161d2c", "TODAY_BG": "#16203a", "ACCENT": "#9fd8ff", "DANGER": "#ff8a3d", "TINT": 0.8, "SCROLL": "#2a3550", "LINE2": "#33405c", "cats": {"info": "#7fd4ff", "graph": "#a8b8ff", "meca": "#ffb46b", "ethique": "#ff8fa3", "travail": "#c3a6ff", "etude": "#9aa7bd", "perso": "#8fe3c0"}},
+  rocket: {"nom": "Rocket League", "sombre": true, "titres": "sport", "BG": "#070d1c", "SURFACE": "#0e1630", "SURFACE2": "#152045", "SURFACE3": "#1e2c5c", "INK": "#eef3ff", "MUTED": "#8fa0c8", "RULE": "#1c2a55", "GRID": "#121c3c", "TODAY_BG": "#16224a", "ACCENT": "#1fa2ff", "DANGER": "#ff5a1f", "TINT": 0.74, "SCROLL": "#25356a", "LINE2": "#2b3d78", "cats": {"info": "#1fa2ff", "graph": "#7c5cff", "meca": "#ff7a1a", "ethique": "#ff3d6e", "travail": "#ffd23f", "etude": "#7f93c4", "perso": "#2ee6a6"}},
+  sakura: {"nom": "Sakura", "sombre": false, "BG": "#fbf0f3", "SURFACE": "#ffffff", "SURFACE2": "#fdf3f6", "SURFACE3": "#f7dfe7", "INK": "#3b2530", "MUTED": "#9a7383", "RULE": "#f1d9e2", "GRID": "#f7e8ee", "TODAY_BG": "#fde2ea", "ACCENT": "#e75a8a", "DANGER": "#d6334b", "TINT": 0.72, "SCROLL": "#efc6d4", "LINE2": "#e9c3d1", "cats": {"info": "#2a9d8f", "graph": "#5b7bd5", "meca": "#e07a3f", "ethique": "#d6336c", "travail": "#9b59b6", "etude": "#7d8597", "perso": "#5aa55a"}},
+  synthwave: {"nom": "Synthwave", "sombre": true, "titres": "sport", "BG": "#14081f", "SURFACE": "#1d0d2e", "SURFACE2": "#281241", "SURFACE3": "#371a58", "INK": "#fdeaff", "MUTED": "#b08ccc", "RULE": "#33184f", "GRID": "#220f36", "TODAY_BG": "#2e1149", "ACCENT": "#ff7a45", "DANGER": "#ff3b6b", "TINT": 0.74, "SCROLL": "#4a2275", "LINE2": "#4a2a75", "cats": {"info": "#3df2ff", "graph": "#a970ff", "meca": "#ffb84d", "ethique": "#ff4fa3", "travail": "#ff7a45", "etude": "#9a86c7", "perso": "#5cffb0"}},
 };
 const PALETTE_AUTO = ["#f5d061", "#ff9f6b", "#6be0c0", "#e58cff", "#7fd3ff", "#ff8fb1", "#b6e36b", "#ffc46b", "#8fa8ff", "#f27474"];
 const FORMES = [["Carré", 0.0], ["Léger", 0.55], ["Arrondi", 1.0], ["Très arrondi", 1.6]];
@@ -105,6 +109,7 @@ function appliquerReglages(reg) {
   const t = THEMES[reg.theme] || THEMES.nuit;
   T.REG_THEME = THEMES[reg.theme] ? reg.theme : "nuit";
   T.MONO = !!t.mono;
+  T.TITRES = t.titres || "";
   for (const k of ["BG", "SURFACE", "SURFACE2", "SURFACE3", "INK", "MUTED", "RULE", "GRID", "TODAY_BG", "DANGER", "TINT", "SCROLL", "LINE2"]) T[k] = t[k];
   T.SOMBRE = t.sombre;
   T.CRITIQUE = t.sombre ? "#ff6fd8" : "#c0268f";
@@ -126,6 +131,8 @@ function appliquerReglages(reg) {
     "--scroll": T.SCROLL, "--critique": T.CRITIQUE, "--rad": String(T.RAD), "--txt": String(T.TXT)};
   for (const [k, x] of Object.entries(v)) st.setProperty(k, x);
   document.documentElement.classList.toggle("mono", T.MONO);
+  document.documentElement.classList.toggle("titres-serif", T.TITRES === "serif");
+  document.documentElement.classList.toggle("titres-sport", T.TITRES === "sport");
   document.documentElement.classList.toggle("clair", !T.SOMBRE);
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute("content", T.BG);
@@ -245,6 +252,33 @@ function normaliserHoraire(v) {
   return out;
 }
 
+/* ---------- notes : cahiers à pages (façon GoodNotes) */
+const PAGE_L = 1000, PAGE_H = 1414;
+const FONDS = [["ligne", "Lignes"], ["carreau", "Quadrillé"], ["points", "Points"], ["blanc", "Blanc"], ["cornell", "Cornell"]];
+const PAPIERS = [["auto", "Selon le thème"], ["blanc", "Blanc"], ["creme", "Crème"], ["sombre", "Sombre"]];
+const COUVERTURES = ["#3d5a80", "#c0392b", "#e67e22", "#f1c40f", "#27ae60", "#16a085", "#2980b9", "#8e44ad", "#d35490", "#5d4037", "#2c3e50", "#7f8c8d"];
+function pageVide(f, id) { return {id: id || newId(), f: f || "ligne", h: PAGE_H, traits: [], textes: []}; }
+function normaliserNote(n) {
+  n = Object.assign({titre: "", texte: "", cours: "", epingle: false, dossier: "", type: "", couverture: "", fond: "ligne", papier: "auto"}, n || {});
+  if (!n.id) n.id = newId();
+  if (!n.maj) n.maj = nowIsoMinutes();
+  if (!Array.isArray(n.pages)) n.pages = [];
+  if (n.dessin && Array.isArray(n.dessin.traits) && n.dessin.traits.length && !n.pages.length) {
+    n.pages = [{id: "p1", f: "ligne", h: Math.max(PAGE_H, Math.round(n.dessin.h || PAGE_H)), traits: n.dessin.traits, textes: []}];
+  }
+  delete n.dessin;
+  if (!n.type) n.type = n.pages.length ? "cahier" : "texte";
+  n.pages = n.pages.filter(p => p && p.id).map(p => ({id: String(p.id), f: p.f || "ligne", h: p.h || PAGE_H,
+    traits: Array.isArray(p.traits) ? p.traits : [], textes: Array.isArray(p.textes) ? p.textes : []}));
+  if (n.type === "cahier" && !n.pages.length) n.pages.push(pageVide(n.fond, "p1"));
+  return n;
+}
+function normaliserDossiers(l) {
+  const out = [], vus = new Set();
+  for (const x of Array.isArray(l) ? l : []) if (x && x.id && !vus.has(x.id)) { vus.add(x.id); out.push({id: String(x.id), nom: String(x.nom || "Dossier"), couleur: estHex(x.couleur) ? x.couleur : COUVERTURES[0]}); }
+  return out;
+}
+
 /* ---------- données */
 function normaliser(d) {
   d = d && typeof d === "object" ? d : {};
@@ -256,6 +290,8 @@ function normaliser(d) {
   if (!Array.isArray(out.categories) || !out.categories.length) out.categories = categoriesDefaut();
   if (!out.reglages || typeof out.reglages !== "object") out.reglages = {};
   if (!out.pomodoro || typeof out.pomodoro !== "object") out.pomodoro = {travail: 25, pause: 5, longue: 15, cycles: 4};
+  out.notes = out.notes.filter(n => n && typeof n === "object").map(normaliserNote);
+  out.dossiers = normaliserDossiers(out.dossiers);
   out.horaires = listeHoraires(out);
   const ids = new Set(out.horaires.map(h => h.id));
   for (const k of Object.keys(out)) {
@@ -274,6 +310,16 @@ function sectionsDe(d) {
       const r = {};
       for (const [a, b] of Object.entries(v || {})) if (!REG_LOCAUX.includes(a)) r[a] = b;
       out[k] = r;
+    } else if (k === "notes") {
+      // les notes : l'ordre, puis une section par note (sans le contenu des pages), puis une par page
+      out.notes = (v || []).map(n => n.id);
+      for (const n of v || []) {
+        const m = {};
+        for (const [a, b] of Object.entries(n)) if (a !== "pages") m[a] = b;
+        m.pages = (n.pages || []).map(p => ({id: p.id, f: p.f, h: p.h}));
+        out["n_" + n.id] = m;
+        for (const p of n.pages || []) out["np_" + n.id + "_" + p.id] = {traits: p.traits || [], textes: p.textes || []};
+      }
     } else if (k.startsWith("h_") && v && typeof v === "object") {
       // autre horaire : une section pour l'horaire + une par semaine modifiée
       const r = {};
@@ -285,7 +331,34 @@ function sectionsDe(d) {
   return out;
 }
 function poserSection(d, nom, valeur) {
-  if (nom.startsWith("hs_")) {
+  if (nom === "notes") {
+    if (!Array.isArray(valeur)) return;
+    if (valeur.length && typeof valeur[0] === "object") { d.notes = valeur.map(normaliserNote); return; }   // ancien format
+    const par = new Map((d.notes || []).map(n => [n.id, n]));
+    const liste = valeur.map(id => par.get(id) || {id, pages: []});
+    for (const n of d.notes || []) if (!valeur.includes(n.id)) liste.push(n);    // supprimées seulement par n_<id>
+    d.notes = liste;
+  } else if (nom.startsWith("np_")) {
+    const [, nid, pid] = nom.split("_");
+    if (valeur === null) return;                                                 // une page retirée l'est par n_<id>
+    d.notes = d.notes || [];
+    let n = d.notes.find(x => x.id === nid);
+    if (!n) { n = {id: nid, pages: []}; d.notes.push(n); }
+    n.pages = n.pages || [];
+    let p = n.pages.find(x => x.id === pid);
+    if (!p) { p = {id: pid, f: "ligne", h: PAGE_H}; n.pages.push(p); }
+    p.traits = valeur.traits || []; p.textes = valeur.textes || [];
+  } else if (nom.startsWith("n_")) {
+    const id = nom.slice(2);
+    d.notes = d.notes || [];
+    const i = d.notes.findIndex(x => x.id === id);
+    if (valeur === null) { if (i >= 0) d.notes.splice(i, 1); return; }
+    const anc = i >= 0 ? d.notes[i] : null;
+    const contenu = new Map(((anc && anc.pages) || []).map(p => [p.id, p]));
+    const nv = Object.assign({}, valeur);
+    nv.pages = (valeur.pages || []).map(pm => { const c = contenu.get(pm.id); return Object.assign({traits: c ? c.traits || [] : [], textes: c ? c.textes || [] : []}, pm); });
+    if (i >= 0) d.notes[i] = nv; else d.notes.push(nv);
+  } else if (nom.startsWith("hs_")) {
     const i = nom.lastIndexOf("_"), id = nom.slice(3, i), l = nom.slice(i + 1);
     let ses = d["h_" + id];
     if (!ses || typeof ses !== "object") { if (valeur === null) return; ses = d["h_" + id] = sessionVide(); }
@@ -310,8 +383,53 @@ function poserSection(d, nom, valeur) {
 }
 
 /* stockage local de l'iPad */
+/* Les données vivent dans IndexedDB (beaucoup plus de place que localStorage pour les cahiers manuscrits).
+   Une copie en mémoire permet de lire tout de suite ; les écritures partent en arrière-plan. */
 const Stock = {
-  lire(k, defaut) { try { const v = localStorage.getItem(k); return v === null ? defaut : JSON.parse(v); } catch (e) { return defaut; } },
-  ecrire(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } },
-  effacer(k) { try { localStorage.removeItem(k); } catch (e) { /* rien */ } },
+  cache: {}, db: null, attente: {}, _t: null,
+  async init() {
+    try {
+      this.db = await new Promise((ok, ko) => {
+        const r = indexedDB.open("horaire", 1);
+        r.onupgradeneeded = () => r.result.createObjectStore("kv");
+        r.onsuccess = () => ok(r.result); r.onerror = () => ko(r.error);
+      });
+      const tout = await new Promise((ok, ko) => {
+        const out = {}, tx = this.db.transaction("kv", "readonly"), st = tx.objectStore("kv"), c = st.openCursor();
+        c.onsuccess = () => { const cur = c.result; if (cur) { out[cur.key] = cur.value; cur.continue(); } else ok(out); };
+        c.onerror = () => ko(c.error);
+      });
+      this.cache = tout;
+    } catch (e) { this.db = null; }
+    // reprise des anciennes données (localStorage)
+    for (const k of ["horaire_donnees", "horaire_reglages_locaux", "horaire_synchro", "horaire_outils"]) {
+      if (k in this.cache) continue;
+      try { const v = localStorage.getItem(k); if (v !== null) { this.cache[k] = JSON.parse(v); this.planifier(k); } } catch (e) { /* */ }
+    }
+    try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* */ }
+  },
+  lire(k, defaut) { return k in this.cache ? clone(this.cache[k]) : defaut; },
+  ecrire(k, v) {
+    this.cache[k] = v;                 // la référence suffit : on écrit la dernière version au moment de vider
+    if (!this.db) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+    this.planifier(k);
+    return true;
+  },
+  planifier(k) {
+    this.attente[k] = true;
+    clearTimeout(this._t);
+    this._t = setTimeout(() => this.vider(), 250);
+  },
+  vider() {
+    if (!this.db) return;
+    const cles = Object.keys(this.attente); this.attente = {};
+    try {
+      const tx = this.db.transaction("kv", "readwrite"), st = tx.objectStore("kv");
+      for (const k of cles) { if (k in this.cache) st.put(this.cache[k], k); else st.delete(k); }
+      for (const k of cles) { try { localStorage.removeItem(k); } catch (e) { /* */ } }
+    } catch (e) { /* */ }
+  },
+  effacer(k) { delete this.cache[k]; if (this.db) this.planifier(k); try { localStorage.removeItem(k); } catch (e) { /* */ } },
 };
+window.addEventListener("pagehide", () => Stock.vider());
+document.addEventListener("visibilitychange", () => { if (document.hidden) Stock.vider(); });

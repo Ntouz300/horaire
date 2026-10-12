@@ -148,8 +148,15 @@ Object.assign(App.prototype, {
     this.inNote.addEventListener("input", () => { this.qNote = this.inNote.value; clearTimeout(this._qj); this._qj = setTimeout(() => this.dessinerNotes(), 180); });
     this.segNotes = el("div.segments.enroule");
     this.listeNotes = el("div.liste");
-    p.append(el("div.ligne-ajout", null, this.inNote, bouton("+  Note", () => new NoteEditeur(this).montrer(), "primary"),
-      bouton("✍", () => new NoteEditeur(this, null, true).montrer(), "ghost", {title: "Note manuscrite (Apple Pencil)"})), this.segNotes, this.listeNotes);
+    p.append(el("div.ligne-ajout", null, this.inNote, bouton("+  Note", () => this.ouvrirNotes("texte"), "primary"),
+      bouton("✍", () => this.ouvrirNotes("cahier"), "ghost", {title: "Cahier manuscrit (Apple Pencil)"})), this.segNotes, this.listeNotes);
+  },
+  ouvrirNotes(x) {
+    document.body.classList.remove("carnet-ouvert");
+    this.aller("notes");
+    const pn = this.ecrans.notes;
+    if (x === "texte" || x === "cahier") pn.creer({type: x, titre: x === "cahier" ? "Cahier sans titre" : "", fond: "ligne", papier: "auto", couverture: ""});
+    else pn.ouvrir(x);
   },
   dessinerNotes() {
     if (!this.listeNotes) return;
@@ -170,13 +177,13 @@ Object.assign(App.prototype, {
       const d = isoDate((n.maj || "").slice(0, 10));
       const sous = [CATS[n.cours] ? CATS[n.cours][1] : "", d ? dateCourte(d) : ""].filter(Boolean).join(" · ");
       const ext = (n.texte || "").split(/\s+/).join(" ").trim();
-      const manus = n.dessin && n.dessin.traits && n.dessin.traits.length;
-      const row = el("div.rangee.note", {onclick: () => new NoteEditeur(this, n).montrer()},
+      const manus = n.type === "cahier";
+      const row = el("div.rangee.note", {onclick: () => this.ouvrirNotes(n.id)},
         pastille(col, 9),
         el("div.corps", null, el("b", {texte: (n.epingle ? "★ " : "") + (manus ? "✍ " : "") + (n.titre || "")}),
           sous ? el("div.petit", {texte: sous, style: {color: col}}) : null,
           ext ? el("div.petit.muted", {texte: tronquer(ext, 110)}) : null,
-          manus ? miniatureDessin(n.dessin) : null));
+          manus && n.pages[0] && n.pages[0].traits.length ? canvasPage(n.pages[0], n.papier, 120) : null));
       lst.append(row);
     }
   },

@@ -83,6 +83,7 @@ class App {
     this.donnees = normaliser(this.donnees);
     for (const k of REG_LOCAUX) if (k in this.reglagesLocaux) this.donnees.reglages[k] = this.reglagesLocaux[k];
     activerHoraire(metaHoraire(this.donnees, this.donnees.reglages.horaire || "aut26"));
+    if (!this.interfacePrete) this.page = configMenu(this.donnees.reglages).depart;
     this.sem = bornerLundi(aujourdhui());
     this.jourVue = memeJour(this.sem, lundiDe(aujourdhui())) ? jourSemaine(aujourdhui()) : 0;
     appliquerCategories(this.donnees.categories);
@@ -113,7 +114,7 @@ class App {
   /* ---------- synchro */
   peutAppliquerDistant() {
     if (this.drag && this.drag.moved) return false;
-    if (this.page === "notes" && this.ecrans && this.ecrans.notes.sale) return false;
+    if (this.page === "notes" && this.ecrans && (this.ecrans.notes.sale || (this.ecrans.notes.ed && (this.ecrans.notes.ed.geste || this.ecrans.notes.ed.texteOuvert)))) return false;
     return !Pile.some(p => p.estModal);
   }
   apresDistant(noms) {

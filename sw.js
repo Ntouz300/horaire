@@ -1,8 +1,8 @@
 /* Service worker : l'app s'ouvre même sans Internet (les données restent sur l'iPad et se synchronisent au retour). */
-const VERSION = "horaire-v4";
-const FICHIERS = ["./", "index.html", "app.css?v=4", "manifest.webmanifest", "icones/icone-180.png", "icones/icone-192.png", "icones/icone-512.png",
-  "js/base.js?v=4", "js/stickers.js?v=4", "js/icones.js?v=4", "js/ui.js?v=4", "js/sync.js?v=4", "js/main.js?v=4", "js/grille.js?v=4", "js/panneaux.js?v=4", "js/editeurs.js?v=4",
-  "js/horloge.js?v=4", "js/dessin.js?v=4", "js/menu.js?v=4"];
+const VERSION = "horaire-v6";
+const FICHIERS = ["./", "index.html", "app.css?v=6", "manifest.webmanifest", "icones/icone-180.png", "icones/icone-192.png", "icones/icone-512.png",
+  "js/base.js?v=6", "js/stickers.js?v=6", "js/icones.js?v=6", "js/ui.js?v=6", "js/sync.js?v=6", "js/main.js?v=6", "js/grille.js?v=6", "js/panneaux.js?v=6", "js/editeurs.js?v=6",
+  "js/horloge.js?v=6", "js/dessin.js?v=6", "js/menu.js?v=6", "js/cahiers.js?v=6"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(FICHIERS)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== VERSION).map(k => caches.delete(k)))).then(() => self.clients.claim()));

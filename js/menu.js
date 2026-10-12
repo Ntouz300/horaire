@@ -3,6 +3,25 @@
 
 const MOIS_LONG = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 
+/* ---------- personnalisation du menu (réglage synchronisé « menu ») */
+const APPS_MENU = [["accueil", "Accueil"], ["horaire", "Horaire"], ["notes", "Notes"], ["resultats", "Résultats"], ["horloge", "Horloge"]];
+const SECTIONS_ACCUEIL = [["maintenant", "En ce moment"], ["applications", "Applications"], ["examen", "Prochain examen"],
+  ["avenir", "À venir"], ["notes", "Notes récentes"], ["horaires", "Mes horaires"]];
+const SECTIONS_LARGES = ["maintenant", "applications"];
+function configMenu(reg) {
+  const m = reg && typeof reg.menu === "object" && reg.menu ? reg.menu : {};
+  const ordre = (Array.isArray(m.apps) ? m.apps : []).filter(k => APPS_MENU.some(a => a[0] === k));
+  for (const [k] of APPS_MENU) if (!ordre.includes(k)) ordre.push(k);
+  const sec = (Array.isArray(m.sections) ? m.sections : []).filter(k => SECTIONS_ACCUEIL.some(a => a[0] === k));
+  for (const [k] of SECTIONS_ACCUEIL) if (!sec.includes(k)) sec.push(k);
+  return {apps: ordre.filter(k => k !== "accueil").concat([]), caches: (Array.isArray(m.caches) ? m.caches : []).filter(k => k !== "accueil"),
+    compact: !!m.compact, sections: sec, sections_off: Array.isArray(m.sections_off) ? m.sections_off : [],
+    fond: ["uni", "degrade", "motif"].includes(m.fond) ? m.fond : "degrade", depart: ["accueil", "horaire", "notes", "resultats"].includes(m.depart) ? m.depart : "accueil",
+    salut: m.salut !== false};
+}
+function appsVisibles(cfg) { return ["accueil"].concat(cfg.apps.filter(k => !cfg.caches.includes(k))); }
+function nomApp(k) { return (APPS_MENU.find(a => a[0] === k) || ["", k])[1]; }
+
 function couleurApp(page) {
   const cats = (THEMES[T.REG_THEME] || THEMES.nuit).cats;
   return {horaire: T.ACCENT, notes: cats.meca, resultats: cats.perso, horloge: cats.travail, accueil: T.ACCENT}[page] || T.ACCENT;
@@ -51,13 +70,14 @@ class Rail {
     this.app = app;
     this.logo = el("button.rail-logo", {type: "button", onclick: () => new ChoixHoraire(app).montrer()});
     this.items = {};
+    const cfg = configMenu(app.reglages);
     const haut = el("div.rail-items");
-    for (const [cle, titre] of [["accueil", "Accueil"], ["horaire", "Horaire"], ["notes", "Notes"], ["resultats", "Résultats"], ["horloge", "Horloge"]]) {
-      haut.append(this.items[cle] = this.item(cle, titre));
-    }
+    for (const cle of appsVisibles(cfg)) haut.append(this.items[cle] = this.item(cle, nomApp(cle)));
     this.items.reglages = this.item("reglages", "Réglages");
     this.lblSync = el("div.rail-sync", {onclick: () => app.ouvrirSynchro()});
-    this.el = el("nav.rail", null, this.logo, haut, el("div.espace"), this.lblSync, this.items.reglages);
+    this.el = el("nav.rail" + (cfg.compact ? ".compact" : ""), null, this.logo, haut, el("div.espace"), this.lblSync,
+      el("button.rail-item.rail-perso", {type: "button", title: "Personnaliser le menu", onclick: () => new PersonnaliserMenu(app).montrer()}, el("span.rail-ico", null, icone("grille", 20)), el("span.rail-lbl", {texte: "Menu"})),
+      this.items.reglages);
     this.maj();
   }
   item(cle, titre) {
@@ -72,6 +92,7 @@ class Rail {
     const h = metaHoraire(this.app.donnees, HID);
     this.logo.innerHTML = "";
     this.logo.append(el("span.logo-carre", {texte: initiales(h.nom)}), el("span.logo-nom", {texte: h.nom}));
+    this.logo.title = h.nom;
     for (const [cle, b] of Object.entries(this.items)) {
       const actif = this.app.page === cle;
       b.classList.toggle("actif", actif);
@@ -103,18 +124,71 @@ class PageAccueil {
     const prenom = String(app.reglages.prenom ?? DEFAUT_REGLAGES.prenom ?? "").trim();
     this.lblH = el("div.acc-heure", {texte: now.toTimeString().slice(0, 5), onclick: () => app.ouvrirHorloge()});
     const res = app.outils.resume();
-    z.append(el("header.acc-entete", null,
+    const cfg = configMenu(app.reglages);
+    z.append(el("header.acc-entete.fond-" + cfg.fond, null,
       el("div", null,
         el("div.mono.muted", {texte: `${JOURS[jourSemaine(now)]} ${now.getDate()} ${MOIS_LONG[now.getMonth()]} ${now.getFullYear()}`.toUpperCase()}),
-        el("h1.acc-salut", {texte: salutation() + (prenom ? `, ${prenom}` : "")}),
+        el("h1.acc-salut", {texte: cfg.salut ? salutation() + (prenom ? `, ${prenom}` : "") : h.nom}),
         el("div.muted", {texte: sous})),
-      el("div.acc-droite", null, this.lblH, res ? el("div.mono", {texte: res, style: {color: couleurApp("horloge")}}) : null)));
-    z.append(this.maintenant(now));
-    z.append(el("div.etiquette.acc-titre", {texte: "APPLICATIONS"}));
-    const tuiles = el("div.acc-tuiles");
-    for (const t of this.tuiles(now)) tuiles.append(this.tuile(...t));
-    z.append(tuiles);
-    z.append(el("div.acc-bas", null, this.aVenir(), this.horaires()));
+      el("div.acc-droite", null, this.lblH, res ? el("div.mono", {texte: res, style: {color: couleurApp("horloge")}}) : null,
+        petit("Personnaliser", () => new PersonnaliserMenu(app).montrer(), "tab"))));
+    let paire = null;
+    for (const s of cfg.sections) {
+      if (cfg.sections_off.includes(s)) continue;
+      const bloc = this.section(s, now, cfg);
+      if (!bloc) continue;
+      if (SECTIONS_LARGES.includes(s)) { paire = null; z.append(bloc); continue; }
+      if (!paire) { paire = el("div.acc-bas"); z.append(paire); paire.append(bloc); }
+      else { paire.append(bloc); paire = null; }
+    }
+  }
+  section(s, now, cfg) {
+    if (s === "maintenant") return this.maintenant(now);
+    if (s === "applications") {
+      const visibles = appsVisibles(cfg);
+      const tuiles = el("div.acc-tuiles");
+      const t = this.tuiles(now).filter(x => visibles.includes(x[0])).sort((a, b) => visibles.indexOf(a[0]) - visibles.indexOf(b[0]));
+      for (const x of t) tuiles.append(this.tuile(...x));
+      tuiles.style.setProperty("--n", String(Math.max(1, Math.min(4, t.length))));
+      return el("div", null, el("div.etiquette.acc-titre", {texte: "APPLICATIONS"}), tuiles);
+    }
+    if (s === "avenir") return this.aVenir();
+    if (s === "horaires") return this.horaires();
+    if (s === "examen") return this.examen();
+    if (s === "notes") return this.notesRecentes();
+    return null;
+  }
+  examen() {
+    const a = aujourdhui();
+    const ex = this.app.ses.echeances.filter(e => !e.fait && ["intra", "final"].includes(e.type) && isoDate(e.date) && isoDate(e.date) >= a)
+      .sort((x, y) => x.date.localeCompare(y.date))[0];
+    const c = el("section.carte.acc-carte.acc-examen");
+    c.append(el("h2", {texte: "Prochain examen"}));
+    if (!ex) { c.append(el("div.muted", {texte: "Aucun examen à venir dans cet horaire."})); return c; }
+    const d = isoDate(ex.date), j = joursEntre(a, d), col = couleur(CATS[ex.cours] ? ex.cours : "perso");
+    c.style.setProperty("--c", col);
+    c.append(el("div.ex-ligne", null, el("div.ex-jours", null, el("b", {texte: String(j)}), el("span", {texte: j > 1 ? "jours" : "jour"})),
+      el("div", null, el("div.ex-titre", {texte: `${CATS[ex.cours] ? CATS[ex.cours][1] + " · " : ""}${ex.quoi || "Examen"}`}),
+        el("div.petit.muted", {texte: `${JOURS[jourSemaine(d)]} ${d.getDate()} ${MOIS_LONG[d.getMonth()]}` + (ex.heure ? ` à ${fmt(ex.heure)}` : "") + (ex.poids ? `  ·  ${ex.poids} %` : "")}))));
+    c.addEventListener("click", () => new EcheanceEditeur(this.app, ex).montrer());
+    return c;
+  }
+  notesRecentes() {
+    const app = this.app;
+    const c = el("section.carte.acc-carte");
+    c.append(el("div.ac-tete", null, el("h2", {texte: "Notes récentes"}), petit("Bibliothèque", () => app.aller("notes"), "tab")));
+    const ns = app.donnees.notes.slice().sort((x, y) => (y.maj || "").localeCompare(x.maj || "")).slice(0, 4);
+    if (!ns.length) { c.append(el("div.muted", {texte: "Aucune note pour l'instant."})); return c; }
+    const g = el("div.acc-notes");
+    for (const n of ns) {
+      const v = el("div.an-vig");
+      if (n.type === "cahier" && n.couverture) v.append(el("div.couverture", {style: {"--c": n.couverture}}, el("span.cv-dos")));
+      else if (n.type === "cahier") v.append(canvasPage(n.pages[0], n.papier, 84));
+      else { const pc = couleursPapier(n.papier); v.append(el("div.doc-texte", {style: {background: pc.fond, color: pc.encre}}, el("span", {texte: (n.texte || "").slice(0, 120)}))); }
+      g.append(el("button.an-doc", {type: "button", onclick: () => app.ouvrirNotes(n.id)}, v, el("span.an-titre", {texte: n.titre || "Sans titre"})));
+    }
+    c.append(g);
+    return c;
   }
   maintenant(now) {
     const app = this.app, m = now.getHours() * 60 + now.getMinutes();
@@ -219,171 +293,6 @@ function ligneHoraire(app, h, apres) {
     el("span.lh-badge", {texte: initiales(h.nom)}),
     el("div.lh-corps", null, el("b", {texte: h.nom}), el("div.petit.muted", {texte: `${plageHoraire(h)}  ·  ${h.nb} semaines`})),
     actif ? el("span.mono.lh-actif", {texte: "ACTIF"}) : null, mod);
-}
-
-/* ---------- application « Notes » */
-class PageNotes {
-  constructor(app) {
-    this.app = app;
-    this.carnet = ""; this.sel = null; this.sale = false; this.q = ""; this.croquis = null;
-    this.colCarnets = el("aside.carte.nt-carnets");
-    this.selCarnet = el("select.saisie.nt-sel-carnet", {onchange: () => this.choisirCarnet(this.selCarnet.value)});
-    this.recherche = el("input.saisie.nt-recherche", {type: "search", placeholder: "Rechercher dans les notes", autocomplete: "off",
-      oninput: () => { this.q = this.recherche.value; this.liste(); }});
-    this.lblCompte = el("div.etiquette");
-    this.lst = el("div.liste.nt-liste");
-    this.colListe = el("section.carte.nt-col-liste", null, el("div.nt-tete-liste", null, el("div.nt-recherche-zone", null, icone("recherche", 18), this.recherche),
-      boutonIcone("plus", "", () => this.nouvelle(), "primary")), this.selCarnet, this.lblCompte, this.lst);
-    this.ed = el("section.carte.nt-editeur");
-    this.el = el("div.ecran.ecran-notes", null, this.colCarnets, this.colListe, this.ed);
-  }
-  note() { return this.app.donnees.notes.find(n => n.id === this.sel) || null; }
-  rafraichir() {
-    this.carnets(); this.liste();
-    const n = this.note();
-    if (!n || !this.vTitre) { this.editeur(); return; }
-    if (this.vTitre.value.trim() !== (n.titre || "").trim() || this.vTexte.value !== (n.texte || "")) this.editeur();
-    else { this.lblEtat.textContent = this.etat(n); this.majEpingle(n); }
-  }
-  carnets() {
-    const c = this.colCarnets, notes = this.app.donnees.notes;
-    c.innerHTML = "";
-    c.append(el("h2.nt-h", {texte: "Notes"}), boutonIcone("plus", "Nouvelle note", () => this.nouvelle(), "primary"));
-    this.selCarnet.innerHTML = "";
-    const ajouter = (cle, nom, nb, visuel) => {
-      c.append(el("button.nt-carnet" + (this.carnet === cle ? ".actif" : ""), {type: "button", onclick: () => this.choisirCarnet(cle)},
-        visuel, el("span.nt-nom", {texte: nom}), el("span.mono.muted", {texte: String(nb)})));
-      this.selCarnet.append(el("option", {value: cle, texte: `${nom} (${nb})`, selected: this.carnet === cle}));
-    };
-    c.append(el("div.etiquette", {texte: "CARNETS"}));
-    ajouter("", "Toutes les notes", notes.length, icone("notes", 18));
-    ajouter("*", "Épinglées", notes.filter(n => n.epingle).length, icone("etoile", 18));
-    c.append(el("div.etiquette", {texte: "MATIÈRES"}));
-    for (const [k, v] of Object.entries(CATS)) {
-      const nb = notes.filter(n => n.cours === k).length;
-      if (v[2] || nb) ajouter(k, v[1], nb, T.REG_THEME === "minecraft" ? el("img.ico-pixel", {src: spriteURL(iconeCat(k), 2), style: {width: "16px", height: "16px"}}) : pastille(couleur(k), 10));
-    }
-    ajouter("-", "Sans matière", notes.filter(n => !CATS[n.cours]).length, pastille(T.MUTED, 10));
-  }
-  choisirCarnet(cle) { this.carnet = cle; this.carnets(); this.liste(); }
-  filtrees() {
-    const q = this.q.trim().toLowerCase(), c = this.carnet;
-    const out = this.app.donnees.notes.filter(n => {
-      if (c === "*" && !n.epingle) return false;
-      if (c === "-" && CATS[n.cours]) return false;
-      if (!["", "*", "-"].includes(c) && n.cours !== c) return false;
-      return !q || ((n.titre || "") + "\n" + (n.texte || "")).toLowerCase().includes(q);
-    });
-    out.sort((a, b) => (b.epingle ? 1 : 0) - (a.epingle ? 1 : 0) || (b.maj || "").localeCompare(a.maj || ""));
-    return out;
-  }
-  liste() {
-    const notes = this.filtrees();
-    this.lblCompte.textContent = `${notes.length} NOTE${notes.length > 1 ? "S" : ""}`;
-    this.lst.innerHTML = "";
-    if (!notes.length) this.lst.append(el("div.vide", {texte: "Aucune note ici."}));
-    for (const n of notes) {
-      const col = CATS[n.cours] ? couleur(n.cours) : T.MUTED;
-      const d = isoDate((n.maj || "").slice(0, 10));
-      const extrait = (n.texte || "").split(/\s+/).join(" ").slice(0, 140) || (n.dessin ? "Note manuscrite" : "Pas de texte");
-      this.lst.append(el("button.nt-carte" + (n.id === this.sel ? ".actif" : ""), {type: "button", onclick: () => this.ouvrir(n.id)},
-        el("div.nt-l1", null, el("b", {texte: (n.titre || "Sans titre") + (n.dessin ? "  ✍" : "")}), n.epingle ? el("span.nt-epi", null, icone("etoile", 14)) : null),
-        el("div.nt-extrait", {texte: extrait}),
-        el("div.nt-l3", null, pastille(col, 8), el("span", {texte: CATS[n.cours] ? CATS[n.cours][1] : "Sans matière"}), el("span.espace"), d ? el("span.mono", {texte: dateCourte(d)}) : null)));
-    }
-  }
-  ouvrir(id) { this.enregistrer(); this.sel = id; this.liste(); this.editeur(); }
-  nouvelle() {
-    this.enregistrer();
-    const n = {id: newId(), titre: "", texte: "", cours: CATS[this.carnet] ? this.carnet : "", epingle: this.carnet === "*", maj: nowIsoMinutes()};
-    this.app.donnees.notes.unshift(n);
-    this.sel = n.id; this.q = ""; this.recherche.value = "";
-    this.app.sauver();
-    this.carnets(); this.liste(); this.editeur();
-    if (this.vTitre && !("ontouchstart" in window)) this.vTitre.focus();
-  }
-  etat(n) { const d = isoDate((n.maj || "").slice(0, 10)); return d ? `Modifiée le ${dateCourte(d)} à ${(n.maj || "").slice(11, 16)}` : ""; }
-  majEpingle(n) {
-    this.bEpi.classList.toggle("on", !!n.epingle);
-    this.bEpi.querySelector("span:last-child").textContent = n.epingle ? "Épinglée" : "Épingler";
-  }
-  editeur() {
-    const z = this.ed, n = this.note();
-    z.innerHTML = ""; this.vTitre = this.vTexte = null; this.croquis = null;
-    if (!n) {
-      z.append(el("div.nt-vide", null, el("span.badge.grand", {style: {"--c": couleurApp("notes")}}, iconePage("notes", 40)),
-        el("h2", {texte: "Choisis une note ou crée-en une"}), el("div.muted", {texte: "Tes notes se synchronisent avec le PC. Écris au clavier ou à l'Apple Pencil."}),
-        boutonIcone("plus", "Nouvelle note", () => this.nouvelle(), "primary")));
-      return;
-    }
-    const cours = liste([["", "Sans matière"]].concat(Object.keys(CATS).map(k => [k, CATS[k][1]])), CATS[n.cours] ? n.cours : "");
-    cours.classList.add("nt-cours");
-    cours.addEventListener("change", () => this.modifie());
-    this.cours = cours;
-    this.bEpi = boutonIcone("etoile", n.epingle ? "Épinglée" : "Épingler", () => this.epingler(), "ghost");
-    this.bEpi.classList.add("nt-btn-epi");
-    this.bEpi.classList.toggle("on", !!n.epingle);
-    this.lblEtat = el("span.mono.muted.nt-etat", {texte: this.etat(n)});
-    const suppr = boutonIcone("corbeille", "", () => this.supprimer(), "danger");
-    this.vTitre = el("input.nt-titre", {type: "text", value: n.titre || "", placeholder: "Titre", oninput: () => this.modifie()});
-    this.vTexte = el("textarea.nt-texte", {placeholder: "Écris ici… (Scribble : tu peux aussi écrire au crayon dans ce champ)", oninput: () => this.modifie()});
-    this.vTexte.value = n.texte || "";
-    this.zoneDessin = el("div.zone-dessin.nt-dessin");
-    const bMain = boutonIcone("crayon", "Écrire à la main", () => { bMain.hidden = true; this.ouvrirDessin(n); }, "ghost");
-    z.append(el("div.nt-barre", null, cours, this.bEpi, bMain, el("span.espace"), this.lblEtat, suppr), this.vTitre, el("div.nt-sep"),
-      this.zoneDessin, this.vTexte);
-    if (n.dessin && n.dessin.traits && n.dessin.traits.length) { bMain.hidden = true; this.ouvrirDessin(n); }
-  }
-  ouvrirDessin(n) {
-    if (this.croquis) return;
-    this.croquis = new Croquis(this.zoneDessin, clone(n.dessin));
-    const marquer = () => setTimeout(() => this.modifie(), 30);
-    this.zoneDessin.addEventListener("pointerup", marquer);
-    this.zoneDessin.addEventListener("click", marquer);
-  }
-  modifie() {
-    this.sale = true;
-    if (this.lblEtat) this.lblEtat.textContent = "Modification…";
-    clearTimeout(this._job);
-    this._job = setTimeout(() => this.enregistrer(), 700);
-  }
-  enregistrer() {
-    clearTimeout(this._job);
-    if (!this.sale) return;
-    this.sale = false;
-    const n = this.note();
-    if (!n || !this.vTitre) return;
-    n.titre = this.vTitre.value.trim();
-    n.texte = this.vTexte.value.replace(/\n+$/, "");
-    n.cours = this.cours.value;
-    if (this.croquis) {
-      const ds = this.croquis.donnees();
-      if (ds.traits.length) n.dessin = ds; else delete n.dessin;
-    }
-    n.maj = nowIsoMinutes();
-    this.app.sauver();
-    if (this.lblEtat) this.lblEtat.textContent = "Enregistrée ✓";
-    this.liste(); this.carnets();
-  }
-  epingler() {
-    const n = this.note();
-    if (!n) return;
-    this.enregistrer();
-    n.epingle = !n.epingle; n.maj = nowIsoMinutes();
-    this.app.sauver();
-    this.majEpingle(n); this.liste(); this.carnets();
-  }
-  async supprimer() {
-    const n = this.note();
-    if (!n) return;
-    if (!await dialogue("Supprimer la note", `Supprimer « ${n.titre || "Sans titre"} » ?`, [["Annuler", false, "ghost"], ["Supprimer", true, "danger"]])) return;
-    this.sale = false; clearTimeout(this._job);
-    const l = this.app.donnees.notes, i = l.indexOf(n);
-    if (i >= 0) l.splice(i, 1);
-    this.sel = null;
-    this.app.sauver();
-    this.rafraichir();
-  }
 }
 
 /* ---------- application « Résultats » */
@@ -539,5 +448,58 @@ class HoraireEditeur extends Modal {
     delete app.donnees["h_" + h.id];
     this.fermer();
     app.choisirHoraire(HID === h.id ? "aut26" : HID);
+  }
+}
+
+/* ---------- personnaliser le menu */
+class PersonnaliserMenu extends Modal {
+  constructor(app) {
+    super("Personnaliser le menu", "Choisis les applications, leur ordre et ce que montre la page d'accueil. Les réglages sont les mêmes sur le PC.", {classe: "large"});
+    this.app = app;
+    this.cfg = clone(configMenu(app.reglages));
+    this.zone = el("div.perso-corps");
+    this.carte.append(this.zone);
+    this.barre([bouton("Par défaut", () => { this.cfg = configMenu({}); this.dessiner(); }, "ghost")],
+      [bouton("Annuler", () => this.fermer()), bouton("Enregistrer", () => this.valider(), "primary")]);
+    this.dessiner();
+  }
+  ligne(nom, visuel, actif, haut, bas, basculer, fixe) {
+    return el("div.perso-ligne" + (actif ? "" : ".off"), null, visuel, el("span.perso-nom", {texte: nom}),
+      fixe ? el("span.petit.muted", {texte: "toujours affiché"}) : caseACocher(actif, basculer),
+      el("button.nb-mini", {type: "button", disabled: !haut, onclick: haut || null, title: "Monter"}, icone("haut", 16)),
+      el("button.nb-mini", {type: "button", disabled: !bas, onclick: bas || null, title: "Descendre"}, icone("bas", 16)));
+  }
+  deplacer(l, i, d) { const x = l.splice(i, 1)[0]; l.splice(i + d, 0, x); this.dessiner(); }
+  dessiner() {
+    const c = this.cfg, z = this.zone; z.innerHTML = "";
+    const g = el("div.col"), d = el("div.col");
+    z.append(g, d);
+    g.append(etiquette("Applications du menu"));
+    g.append(this.ligne("Accueil", el("span.perso-ico", null, iconePage("accueil", 20)), true, null, null, null, true));
+    c.apps.forEach((k, i) => g.append(this.ligne(nomApp(k), el("span.perso-ico", {style: {color: couleurApp(k)}}, iconePage(k, 20)), !c.caches.includes(k),
+      i > 0 ? () => this.deplacer(c.apps, i, -1) : null, i < c.apps.length - 1 ? () => this.deplacer(c.apps, i, 1) : null,
+      (v) => { c.caches = c.caches.filter(x => x !== k).concat(v ? [] : [k]); this.dessiner(); })));
+    g.append(etiquette("Barre de menu"));
+    const st = el("div.rapides");
+    st.append(petit("Icônes et noms", () => { c.compact = false; this.dessiner(); }, !c.compact ? "tab_on" : "ghost"),
+      petit("Icônes seulement", () => { c.compact = true; this.dessiner(); }, c.compact ? "tab_on" : "ghost"));
+    g.append(st, etiquette("Page au démarrage"));
+    const dep = el("div.rapides");
+    for (const k of ["accueil", "horaire", "notes", "resultats"]) dep.append(petit(nomApp(k), () => { c.depart = k; this.dessiner(); }, c.depart === k ? "tab_on" : "ghost"));
+    g.append(dep);
+    d.append(etiquette("Sections de l'accueil"));
+    c.sections.forEach((k, i) => d.append(this.ligne((SECTIONS_ACCUEIL.find(x => x[0] === k) || ["", k])[1], null, !c.sections_off.includes(k),
+      i > 0 ? () => this.deplacer(c.sections, i, -1) : null, i < c.sections.length - 1 ? () => this.deplacer(c.sections, i, 1) : null,
+      (v) => { c.sections_off = c.sections_off.filter(x => x !== k).concat(v ? [] : [k]); this.dessiner(); })));
+    d.append(etiquette("En-tête de l'accueil"));
+    const f = el("div.rapides");
+    for (const [v, t] of [["uni", "Uni"], ["degrade", "Dégradé"], ["motif", "Motif"]]) f.append(petit(t, () => { c.fond = v; this.dessiner(); }, c.fond === v ? "tab_on" : "ghost"));
+    d.append(f, el("div.champ", null, caseACocher(c.salut, (v) => { c.salut = v; }, "Afficher la salutation (« Bonsoir, … »)")));
+  }
+  valider() {
+    this.app.reglages.menu = this.cfg;
+    this.fermer();
+    this.app.sauver();
+    this.app.construire();
   }
 }
