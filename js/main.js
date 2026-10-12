@@ -12,7 +12,9 @@ class App {
     this.reglagesLocaux = Stock.lire("horaire_reglages_locaux", {});
     this.premierChargement = false;
     this.undo = []; this.selId = null; this.pressePapier = null; this.drag = null;
-    this.vue = this.reglagesLocaux.vue === "jour" ? "jour" : "semaine";
+    this.compact = majCompact();
+    // sur iPhone, la journée est la vue par défaut (la semaine reste disponible)
+    this.vue = this.reglagesLocaux.vue === "jour" || (IPHONE && this.reglagesLocaux.vue !== "semaine") ? "jour" : "semaine";
     this.onglet = "taches"; this.fEch = "avenir"; this.fNote = ""; this.qNote = "";
     this.page = "accueil";
     this.cacherSaute = false;
@@ -230,13 +232,18 @@ class App {
     this.lblSync = el("span.mono.lbl-sync", {onclick: () => this.ouvrirSynchro()});
     this.btnCarnet = bouton("Carnet", () => document.body.classList.toggle("carnet-ouvert"), "ghost");
     this.btnCarnet.classList.add("btn-carnet");
-    const outils = el("div.barre-outils", null,
-      bouton("+  Ajouter un bloc", () => this.nouveauBloc(), "primary"),
-      bouton(metaHoraire(this.donnees, HID).nom + "  ▾", () => new ChoixHoraire(this).montrer()),
-      bouton("Matières", () => new Matieres(this).montrer()),
-      caseACocher(this.cacherSaute, (v) => { this.cacherSaute = v; this.dessinerGrille(); }, "Cacher les blocs « je saute »"),
-      el("div.espace"), this.lblSync, this.lblSave,
-      bouton("Exporter", () => this.exporter()), bouton("Importer", () => this.importer()), this.btnCarnet);
+    const outils = this.compact
+      // iPhone : l'essentiel dans la barre, le reste dans « Options »
+      ? el("div.barre-outils", null,
+        bouton("+  Bloc", () => this.nouveauBloc(), "primary"), this.btnCarnet,
+        bouton("Options", () => this.optionsHoraire(), "ghost"), el("div.espace"), this.lblSync, this.lblSave)
+      : el("div.barre-outils", null,
+        bouton("+  Ajouter un bloc", () => this.nouveauBloc(), "primary"),
+        bouton(metaHoraire(this.donnees, HID).nom + "  ▾", () => new ChoixHoraire(this).montrer()),
+        bouton("Matières", () => new Matieres(this).montrer()),
+        caseACocher(this.cacherSaute, (v) => { this.cacherSaute = v; this.dessinerGrille(); }, "Cacher les blocs « je saute »"),
+        el("div.espace"), this.lblSync, this.lblSave,
+        bouton("Exporter", () => this.exporter()), bouton("Importer", () => this.importer()), this.btnCarnet);
     // barre de la semaine
     this.vues = {};
     const bs = el("div.barre-semaine");
@@ -248,9 +255,14 @@ class App {
     this.remplirSemaines();
     this.lblCrit = el("span.lbl-crit");
     this.lblSemInfo = el("span.muted.petit");
-    bs.append(bouton("‹", () => this.precedent(), "ghost fleche"), this.selSem, bouton("›", () => this.suivant(), "ghost fleche"),
-      bouton("Aujourd'hui", () => this.allerAujourdhui()), this.lblCrit, this.lblSemInfo, el("div.espace"),
-      bouton("Semaine…", () => new OptionsSemaine(this).montrer()));
+    // iPhone, vue journée : « Résumé » montre le panneau du jour (bilan, créneaux libres, échéances) à la place de la grille
+    this.btnResume = bouton("Résumé", () => { document.body.classList.toggle("voir-resume"); this.btnResume.className = "btn btn-resume " + (document.body.classList.contains("voir-resume") ? "tab_on" : "ghost"); if (!document.body.classList.contains("voir-resume")) this.dessinerGrille(); }, "ghost");
+    this.btnResume.classList.add("btn-resume");
+    document.body.classList.remove("voir-resume");
+    const cl = (b, c) => { b.classList.add(c); return b; };
+    bs.append(cl(bouton("‹", () => this.precedent(), "ghost fleche"), "bs-prec"), this.selSem, cl(bouton("›", () => this.suivant(), "ghost fleche"), "bs-suiv"),
+      cl(bouton("Aujourd'hui", () => this.allerAujourdhui()), "bs-auj"), this.lblCrit, this.lblSemInfo, el("div.espace"), this.btnResume,
+      cl(bouton("Semaine…", () => new OptionsSemaine(this).montrer()), "bs-optsem"));
     // grille
     this.gScroll = el("div.grille-scroll");
     this.gEnt = el("div.grille-entete");
@@ -269,6 +281,9 @@ class App {
       this.onglets[cle] = b; tabs.append(b);
       this.pages[cle] = el("div.page");
     }
+    const fermerCarnet = bouton("✕", () => document.body.classList.remove("carnet-ouvert"), "ghost", {title: "Fermer", "aria-label": "Fermer le carnet"});
+    fermerCarnet.classList.add("carnet-fermer");
+    tabs.append(fermerCarnet);
     const carnet = el("aside.carte.carnet", null, tabs, this.pages.taches, this.pages.ech, this.pages.notes);
     this.pageTaches(this.pages.taches);
     this.pageEcheances(this.pages.ech);
@@ -276,8 +291,41 @@ class App {
     zone.append(entete, outils, el("main.principal", null, grilleCarte, carnet), el("div.voile-carnet", {onclick: () => document.body.classList.remove("carnet-ouvert")}));
     this.montrer(this.onglet);
     this.installerGrille();
+    this.installerBalayage();
     this.majHorloge(true);
     this.majEtatSynchro();
+  }
+
+  /* iPhone, vue journée : un glissement horizontal du doigt passe au jour précédent / suivant (jamais pendant un déplacement de bloc) */
+  installerBalayage() {
+    let d = null;
+    this.gScroll.addEventListener("touchstart", (e) => {
+      d = this.compact && this.vue === "jour" && e.touches.length === 1 && !e.target.closest(".bloc")
+        ? {x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now()} : null;
+    }, {passive: true});
+    this.gScroll.addEventListener("touchend", (e) => {
+      if (!d || (this.drag && (this.drag.arme || this.drag.moved))) { d = null; return; }
+      const t = e.changedTouches[0], dx = t.clientX - d.x, dy = t.clientY - d.y;
+      if (Math.abs(dx) > 70 && Math.abs(dy) < 45 && Date.now() - d.t < 700 && this.gScroll.scrollWidth <= this.gScroll.clientWidth + 2) {
+        if (dx < 0) this.suivant(); else this.precedent();
+      }
+      d = null;
+    }, {passive: true});
+  }
+
+  /* iPhone : options de l'horaire qui ne tiennent pas dans la barre */
+  optionsHoraire() {
+    const m = new Modal("Options de l'horaire", null);
+    const act = (texte, f, style = "ghost") => bouton(texte, () => { m.fermer(); f(); }, style);
+    m.carte.append(el("div.opt-horaire", null,
+      act("Horaire : " + metaHoraire(this.donnees, HID).nom + "  ▾", () => new ChoixHoraire(this).montrer()),
+      act("Matières", () => new Matieres(this).montrer()),
+      act("Options de la semaine…", () => new OptionsSemaine(this).montrer()),
+      act("Exporter", () => this.exporter()), act("Importer", () => this.importer()),
+      act("Synchronisation", () => this.ouvrirSynchro())),
+      el("div.champ", null, caseACocher(this.cacherSaute, (v) => { this.cacherSaute = v; this.dessinerGrille(); }, "Cacher les blocs « je saute »")));
+    m.barre([], [bouton("Fermer", () => m.fermer())]);
+    m.montrer();
   }
 
   remplirSemaines() {
@@ -382,7 +430,15 @@ class App {
   }
   redessinerBientot() {
     clearTimeout(this._rt);
-    this._rt = setTimeout(() => { if (this.interfacePrete && this.page === "horaire") this.dessinerGrille(); }, 80);
+    this._rt = setTimeout(() => {
+      const c = majCompact();
+      if (c !== this.compact) {                     // passage petit écran ↔ grand écran (Slide Over, rotation) : on refait l'interface
+        this.compact = c;
+        if (this.interfacePrete) { if (this.ecrans && this.ecrans.notes) this.ecrans.notes.enregistrer(); this.construire(); }
+        return;
+      }
+      if (this.interfacePrete && this.page === "horaire") this.dessinerGrille();
+    }, 80);
   }
 
   majBarreSemaine() {

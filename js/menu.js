@@ -73,7 +73,13 @@ class Rail {
     this.items = {};
     const cfg = configMenu(app.reglages);
     const haut = el("div.rail-items");
-    for (const cle of appsVisibles(cfg)) haut.append(this.items[cle] = this.item(cle, nomApp(cle)));
+    const vis = appsVisibles(cfg);
+    // iPhone : les 4 premières applications du menu vont dans la barre du bas, les autres dans « Plus »
+    this.horsBarre = vis.slice(4);
+    vis.forEach((cle, i) => { haut.append(this.items[cle] = this.item(cle, nomApp(cle))); if (i >= 4) this.items[cle].classList.add("hors-barre"); });
+    this.btnPlus = el("button.rail-item.rail-plus", {type: "button", onclick: () => new MenuPlus(app, this).montrer()},
+      el("span.rail-ico", null, icone("liste", 24)), el("span.rail-lbl", {texte: "Plus"}));
+    haut.append(this.btnPlus);
     this.items.reglages = this.item("reglages", "Réglages");
     this.lblSync = el("div.rail-sync", {onclick: () => app.ouvrirSynchro()});
     this.el = el("nav.rail" + (cfg.compact ? ".compact" : ""), null, this.logo, haut, el("div.espace"), this.lblSync,
@@ -102,6 +108,28 @@ class Rail {
       ic.innerHTML = "";
       ic.append(iconePage(cle, 24));
     }
+    this.btnPlus.classList.toggle("actif", this.horsBarre.includes(this.app.page));
+    this.btnPlus.style.setProperty("--c", T.ACCENT);
+  }
+}
+
+/* iPhone : tout ce qui ne tient pas dans la barre du bas (autres applications, horaire actif, menu, réglages, synchro) */
+class MenuPlus extends Modal {
+  constructor(app, rail) {
+    super("Plus", null, {classe: "menu-plus"});
+    const h = metaHoraire(app.donnees, HID);
+    const ligne = (ico, titre, sous, action, col) => el("button.mp-ligne", {type: "button", style: {"--c": col || T.ACCENT}, onclick: () => { this.fermer(); action(); }},
+      el("span.badge", null, ico), el("span.mp-txt", null, el("b", {texte: titre}), sous ? el("span.petit.muted", {texte: sous}) : null), el("span.mp-fleche", null, icone("fleche", 18)));
+    const g = el("div.mp-liste");
+    for (const cle of rail.horsBarre) {
+      g.append(ligne(iconePage(cle, 24), nomApp(cle), cle === app.page ? "Ouvert" : "", () => cle === "horloge" ? app.ouvrirHorloge() : app.aller(cle), couleurApp(cle)));
+    }
+    g.append(ligne(el("span.logo-carre.mini", {texte: initiales(h.nom)}), "Horaire : " + h.nom, "Changer d'horaire ou de session", () => new ChoixHoraire(app).montrer()),
+      ligne(icone("grille", 22), "Personnaliser le menu", "Ordre des applications de la barre du bas", () => new PersonnaliserMenu(app).montrer(), T.MUTED),
+      ligne(icone("reglages", 22), "Réglages", "Thème, texte, heures affichées…", () => new Reglages(app).montrer(), T.MUTED),
+      ligne(el("span.mp-sync", {texte: "●", style: {color: (rail.lblSync.style.color || T.MUTED)}}), "Synchronisation", (rail.lblSync.title || "État de la synchro"), () => app.ouvrirSynchro(), T.MUTED));
+    this.carte.append(g);
+    this.barre([], [bouton("Fermer", () => this.fermer())]);
   }
 }
 
@@ -478,6 +506,7 @@ class PersonnaliserMenu extends Modal {
     const g = el("div.col"), d = el("div.col");
     z.append(g, d);
     g.append(etiquette("Applications du menu"));
+    if (document.body.classList.contains("tel")) g.append(el("div.petit.muted", {texte: "Sur l'iPhone, les 4 premières applications vont dans la barre du bas, les autres dans « Plus ».", style: {margin: "-2px 0 8px"}}));
     g.append(this.ligne("Accueil", el("span.perso-ico", null, iconePage("accueil", 20)), true, null, null, null, true));
     c.apps.forEach((k, i) => g.append(this.ligne(nomApp(k), el("span.perso-ico", {style: {color: couleurApp(k)}}, iconePage(k, 20)), !c.caches.includes(k),
       i > 0 ? () => this.deplacer(c.apps, i, -1) : null, i < c.apps.length - 1 ? () => this.deplacer(c.apps, i, 1) : null,

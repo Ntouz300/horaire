@@ -797,3 +797,206 @@ body.glisse-en-cours, body.glisse-en-cours * { cursor: grabbing !important; }
 .tr-nom { font-weight: 700; overflow-wrap: anywhere; }
 .tr-note { max-width: 760px; margin-top: 18px; }
 @media (max-width: 700px) { .ecran-transferts { padding-left: 16px; padding-right: 16px; } }
+
+/* ================= iPhone (et tout petit écran) : body.tel =================
+   Barre d'onglets en bas, contenu en une colonne, fenêtres en feuilles plein écran. Rien ne change sur iPad ni sur grand écran. */
+body.tel { --txt-tel: 1; }
+.rail-plus { display: none; }
+.btn-resume { display: none; }
+body.tel .coque { flex-direction: column; }
+body.tel .pages { order: 1; min-height: 0; }
+body.tel .rail { order: 2; width: 100%; flex-direction: row; align-items: stretch; gap: 0; border-right: 0; border-top: 1px solid var(--rule);
+  padding: 4px max(6px, env(safe-area-inset-right)) max(4px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
+  background: color-mix(in srgb, var(--surface) 94%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+body.tel .rail-logo, body.tel .rail .espace, body.tel .rail-sync, body.tel .rail-perso, body.tel .rail > .rail-item[data-p="reglages"],
+body.tel .rail-item.hors-barre { display: none; }
+body.tel .rail-items { flex-direction: row; gap: 2px; }
+body.tel .rail-item { flex: 1; min-width: 0; min-height: 50px; padding: 4px 0 2px; gap: 2px; border-radius: 12px; }
+body.tel .rail-item.actif::before { left: 28%; right: 28%; top: -5px; bottom: auto; width: auto; height: 3px; border-radius: 0 0 3px 3px; }
+body.tel .rail-lbl { font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+body.tel .rail-plus { display: flex; }
+body.tel .rail.compact .rail-lbl { display: block; }
+
+/* écrans : marges réduites, l'encoche et le bas sont gérés par la barre */
+body.tel .ecran { padding: max(10px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 10px max(12px, env(safe-area-inset-left)); }
+body.tel .ecran-defile, body.tel .ecran-3d, body.tel .ecran-transferts { padding: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 24px max(14px, env(safe-area-inset-left)); }
+body.tel .page-h1 { font-size: calc(28px * var(--txt)); }
+body.tel .btn { min-height: 40px; }
+body.tel .btn.petit { min-height: 34px; }
+
+/* fenêtres : feuilles qui montent du bas, sur toute la largeur */
+body.tel .voile { padding: 0; align-items: flex-end; }
+body.tel .carte-modale, body.tel .carte-modale.large, body.tel .carte-modale.dialogue, body.tel .carte-modale.horloge {
+  width: 100%; max-height: calc(100dvh - max(14px, env(safe-area-inset-top))); border-radius: calc(22px * var(--rad)) calc(22px * var(--rad)) 0 0;
+  padding: 20px max(16px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  border-left: 0; border-right: 0; border-bottom: 0; transform: translateY(40px); }
+body.tel .carte-modale.dialogue { max-height: 80dvh; }
+body.tel .voile.visible .carte-modale { transform: none; }
+body.tel .titre-modal { font-size: calc(22px * var(--txt)); }
+body.tel .grille2, body.tel .reglages-corps, body.tel .perso-corps { grid-template-columns: 1fr; gap: 0 14px; }
+body.tel .barre-actions { position: sticky; bottom: calc(-1 * max(18px, env(safe-area-inset-bottom))); background: var(--surface); padding: 10px 0 max(4px, env(safe-area-inset-bottom)); margin-bottom: calc(-1 * max(4px, env(safe-area-inset-bottom))); }
+body.tel .barre-actions .d { margin-left: auto; }
+body.tel .themes { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+body.tel .roue-corps { justify-content: center; }
+body.tel .corps-horloge { min-height: 0; }
+body.tel .notif { width: calc(100vw - 32px); }
+body.tel .zone-notifs { bottom: calc(76px + env(safe-area-inset-bottom)); }
+body.tel .bulle { bottom: calc(80px + env(safe-area-inset-bottom)); }
+/* menu « Plus » */
+.mp-liste { display: flex; flex-direction: column; gap: 8px; }
+.mp-ligne { display: flex; align-items: center; gap: 14px; width: 100%; border: 1px solid var(--rule); background: var(--surface2); color: var(--ink); text-align: left;
+  border-radius: calc(16px * var(--rad)); padding: 10px 12px; min-height: 64px; cursor: pointer; }
+.mp-ligne .badge { width: 44px; height: 44px; }
+.mp-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.mp-txt b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mp-fleche { color: var(--muted); }
+.mp-sync { font-size: 18px; }
+.logo-carre.mini { width: 34px; height: 34px; font-size: 12px; border-radius: 10px; box-shadow: none; }
+.opt-horaire { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 14px; }
+.opt-horaire .btn { width: 100%; text-align: left; min-height: 46px; }
+
+/* ---------- horaire */
+body.tel .entete { flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+body.tel .titre-zone { flex: 1 1 100%; min-width: 0; }
+body.tel .titre-zone h1 { font-size: calc(22px * var(--txt)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.tel .petit-titre { font-size: calc(10.5px * var(--txt)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.tel .barre-session { min-width: 0; margin-top: 6px; }
+body.tel .horloge-zone { order: 2; flex: 1 1 auto; gap: 12px; align-items: center; }
+body.tel .heure { font-size: calc(24px * var(--txt)); }
+body.tel .sec { font-size: calc(13px * var(--txt)); }
+body.tel .info-maint { min-width: 0; }
+body.tel .ensuite { -webkit-line-clamp: 1; }
+body.tel .stats { order: 3; flex: 1 1 100%; gap: 6px; }
+body.tel .chip { flex: 1; padding: 5px 8px; border-radius: 10px; display: flex; align-items: baseline; gap: 6px; }
+body.tel .chip-val { font-size: calc(13px * var(--txt)); }
+body.tel .chip-lbl { font-size: calc(9.5px * var(--txt)); margin-top: 0; }
+body.tel .barre-outils { padding: 8px 0; gap: 6px; flex-wrap: nowrap; }
+body.tel .barre-outils .btn { padding: 8px 12px; }
+body.tel .lbl-save { display: none; }
+body.tel .lbl-sync { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+body.tel .btn-carnet { display: inline-block; }
+body.tel .grille-carte { padding: 8px; border-radius: calc(16px * var(--rad)); }
+body.tel .barre-semaine { gap: 4px; margin-bottom: 6px; }
+body.tel .barre-semaine .btn { padding: 6px 10px; min-height: 36px; }
+body.tel .barre-semaine .saisie.sel-semaine { min-width: 0; flex: 1 1 120px; font-size: 15px; padding: 6px 28px 6px 8px; min-height: 36px; }
+body.tel .barre-semaine .lbl-crit, body.tel .barre-semaine .lbl-semInfo { font-size: 11px; }
+body.tel .btn-resume { display: none; }
+body.tel.vue-jour .btn-resume { display: inline-block; }
+body.tel .grille-zone { flex-direction: column; gap: 0; }
+body.tel .panneau-jour, body.tel.vue-jour .panneau-jour { display: none; }
+body.tel.vue-jour.voir-resume .panneau-jour { display: block; width: auto; max-height: none; flex: 1; padding: 4px 4px 10px; }
+body.tel.vue-jour.voir-resume .grille-scroll { display: none; }
+body.tel .legende { gap: 10px; padding-top: 6px; font-size: 11px; }
+body.tel .legende .leg-aide, body.tel .legende .hotbar { display: none; }
+body.tel .jour-tete { padding: 8px 8px 0 10px; }
+body.tel .barre-selection { bottom: 10px; max-width: calc(100% - 12px); }
+body.tel .bs-titre { max-width: 140px; }
+/* carnet (tâches, échéances, notes) : feuille plein écran */
+body.tel .carnet { position: fixed; left: 0; right: 0; top: auto; bottom: 0; width: auto; height: calc(100dvh - max(30px, env(safe-area-inset-top) + 16px)); z-index: 25;
+  border-radius: calc(22px * var(--rad)) calc(22px * var(--rad)) 0 0; transform: translateY(105%); transition: transform .22s;
+  padding: 16px max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); box-shadow: 0 -18px 40px rgba(0, 0, 0, .45); }
+body.tel.carnet-ouvert .carnet { transform: none; }
+body.tel.carnet-ouvert .voile-carnet { display: block; position: fixed; inset: 0; z-index: 24; background: color-mix(in srgb, var(--bg) 60%, transparent); }
+.carnet-fermer { display: none; }
+body.tel .carnet-fermer { display: inline-flex; margin-left: auto; }
+body.tel .onglets { flex-wrap: nowrap; }
+body.tel .onglets .btn { padding: 8px 12px; }
+body.tel .menu-vide { left: 12px !important; right: 12px; }
+
+/* ---------- accueil */
+body.tel .acc-entete { flex-direction: column; align-items: flex-start; gap: 10px; }
+body.tel .acc-entete.fond-degrade, body.tel .acc-entete.fond-motif { padding: 18px; }
+body.tel .acc-salut { font-size: calc(30px * var(--txt)); }
+body.tel .acc-droite { text-align: left; display: flex; align-items: center; gap: 14px; width: 100%; }
+body.tel .acc-droite .btn { margin-top: 0; margin-left: auto; }
+body.tel .acc-heure { font-size: calc(36px * var(--txt)); }
+body.tel .acc-maint { margin-top: 14px; padding: 14px 16px; gap: 12px; flex-wrap: wrap; }
+body.tel .am-titre { font-size: calc(21px * var(--txt)); }
+body.tel .am-droite { text-align: left; }
+body.tel .acc-tuiles { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px; }
+body.tel .tuile { padding: 14px; }
+body.tel .tuile .badge { width: 42px; height: 42px; }
+body.tel .tu-titre { margin-top: 12px; }
+body.tel .tu-grand { font-size: calc(20px * var(--txt)); }
+body.tel .acc-bas { grid-template-columns: 1fr; gap: 12px; margin-top: 12px; }
+body.tel .acc-carte { padding: 16px; }
+body.tel .acc-notes { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+body.tel .ex-jours { width: 70px; height: 70px; }
+
+/* ---------- notes */
+body.tel .ecran-notes2 { flex-direction: column; gap: 10px; }
+body.tel .nt-carnets { display: none; }
+body.tel .nb-tete { gap: 8px; margin-bottom: 10px; }
+body.tel .nb-tete .page-h1 { flex: 1 1 100%; font-size: calc(26px * var(--txt)); }
+body.tel .nb-tete .espace { display: none; }
+body.tel .nb-rech { flex: 1 1 100%; width: auto; order: 5; }
+body.tel .nb-tri { flex: 1; min-width: 0; }
+body.tel .nb-docs { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 16px 12px; }
+body.tel .liste-docs { grid-template-columns: 1fr; }
+body.tel .doc-plus { width: 38px; height: 38px; }
+body.tel .doc.sur-ipad .doc-vignette { opacity: .55; }
+body.tel .doc-texte-ed { padding: 14px 4px; }
+body.tel .nt-titre { font-size: calc(26px * var(--txt)); padding-top: 8px; }
+body.tel .doc-barre { gap: 4px; }
+body.tel .doc-onglets { display: none; }
+body.tel .nt-sel-carnet { display: block; }
+
+/* ---------- résultats, 3D, transferts */
+body.tel .res-entete { gap: 10px; }
+body.tel .res-obj-zone { text-align: left; }
+body.tel .res-obj { justify-content: flex-start; }
+body.tel .res-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+body.tel .res-stat { padding: 12px; }
+body.tel .res-stat .etiquette { font-size: 9.5px; overflow-wrap: anywhere; }
+body.tel .res-grand { font-size: calc(24px * var(--txt)); }
+body.tel .res-grille { grid-template-columns: 1fr; gap: 12px; }
+body.tel .res-cours { padding: 16px; }
+body.tel .rc-res { width: 64px; }
+body.tel .o3-grille { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+body.tel .o3-vide { padding: 22px 16px; margin: 16px 0; }
+body.tel .tr-connexion, body.tel .tr-liste { max-width: none; }
+body.tel .tr-ligne { flex-wrap: wrap; }
+body.tel .tr-ligne a.btn { flex: 1 1 100%; }
+
+/* iPhone en paysage : barre du bas plus basse, en-tête de l'horaire réduit */
+@media (orientation: landscape) {
+  body.tel .rail-item { min-height: 40px; flex-direction: row; gap: 6px; }
+  body.tel .rail-lbl { font-size: 11.5px; }
+  body.tel .ecran-horaire .entete .titre-zone, body.tel .ecran-horaire .stats { display: none; }
+  body.tel .barre-outils { padding: 4px 0; }
+  body.tel .carnet { height: calc(100dvh - 12px); }
+  body.tel .acc-tuiles { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+  body.tel .res-grille { grid-template-columns: 1fr 1fr; }
+  body.tel .o3-grille { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* iPhone : barre de la semaine sur deux lignes (vues + résumé, puis navigation) */
+body.tel .barre-semaine .espace, body.tel .barre-semaine .muted.petit, body.tel .bs-optsem { display: none; }
+body.tel .barre-semaine > .btn.tab, body.tel .barre-semaine > .btn.tab_on { order: 1; }
+body.tel .btn-resume { order: 2; margin-left: auto; }
+body.tel .barre-semaine::after { content: ""; order: 3; flex-basis: 100%; height: 0; }
+body.tel .bs-prec { order: 4; }
+body.tel .barre-semaine .saisie.sel-semaine { order: 5; }
+body.tel .bs-suiv { order: 6; }
+body.tel .bs-auj { order: 7; }
+body.tel .lbl-crit { order: 8; flex-basis: 100%; margin: 0; font-size: 12px; }
+body.tel .lbl-crit:empty { display: none; }
+/* iPhone : en-tête des notes (titre + Nouveau, recherche, tri / vue / importer) */
+body.tel .nb-tete .page-h1 { order: 1; flex: 1 1 0; min-width: 0; font-size: calc(24px * var(--txt)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.tel .nb-nouveau { order: 2; }
+body.tel .nb-rech { order: 3; }
+body.tel .nb-tri { order: 4; }
+body.tel .nb-vue { order: 5; }
+body.tel .nb-importer { order: 6; }
+/* horloge : onglets qui défilent */
+body.tel .carte-modale.horloge .onglets { flex-wrap: wrap; gap: 4px; }
+body.tel .carte-modale.horloge .onglets .btn { padding: 8px 11px; }
+@media (orientation: landscape) {
+  body.tel .ecran-horaire .entete { display: none; }
+  body.tel .rail { padding-top: 2px; padding-bottom: max(2px, env(safe-area-inset-bottom)); }
+  body.tel .rail-item { min-height: 36px; }
+  body.tel .rail-item.actif::before { top: -3px; }
+}
+body.tel .barre-actions .g, body.tel .barre-actions .d { flex-wrap: wrap; }
+body.tel .barre-actions .btn { min-width: 0; }
+body.tel .res-grand { font-size: calc(21px * var(--txt)); }

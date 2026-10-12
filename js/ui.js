@@ -23,6 +23,20 @@ function el(tag, attrs, ...enfants) {
   return e;
 }
 
+/* ---------- iPhone : interface compacte (menu en bas, vue journée, fenêtres en plein écran) */
+/* IPHONE : le téléphone lui-même (les cahiers manuscrits n'y sont pas proposés) ; ecranCompact() : petit écran, y compris un iPad en Slide Over */
+const IPHONE = /iPhone|iPod/.test(navigator.userAgent) || (/Android/.test(navigator.userAgent) && /Mobile/.test(navigator.userAgent));
+function ecranCompact() { return IPHONE || window.innerWidth < 600 || Math.min(window.innerWidth, window.innerHeight) < 500; }
+function majCompact() {
+  const c = ecranCompact();
+  document.body.classList.toggle("tel", c);
+  document.body.classList.toggle("iphone", IPHONE);
+  return c;
+}
+function messageCahierIphone() {
+  return informer("Cahier manuscrit", "Les cahiers manuscrits s'ouvrent et se créent sur l'iPad (Apple Pencil) ou sur le PC. Sur l'iPhone, tu peux utiliser les notes texte.");
+}
+
 /* bouton arrondi : styles ghost, primary, danger, tab, tab_on */
 function bouton(texte, action, style = "ghost", extra = {}) {
   const b = el("button.btn." + style, Object.assign({type: "button"}, extra), texte);

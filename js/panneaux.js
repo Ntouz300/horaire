@@ -149,7 +149,7 @@ Object.assign(App.prototype, {
     this.segNotes = el("div.segments.enroule");
     this.listeNotes = el("div.liste");
     p.append(el("div.ligne-ajout", null, this.inNote, bouton("+  Note", () => this.ouvrirNotes("texte"), "primary"),
-      bouton("✍", () => this.ouvrirNotes("cahier"), "ghost", {title: "Cahier manuscrit (Apple Pencil)"})), this.segNotes, this.listeNotes);
+      IPHONE ? null : bouton("✍", () => this.ouvrirNotes("cahier"), "ghost", {title: "Cahier manuscrit (Apple Pencil)"})), this.segNotes, this.listeNotes);
   },
   ouvrirNotes(x) {
     document.body.classList.remove("carnet-ouvert");

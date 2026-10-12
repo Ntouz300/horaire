@@ -389,6 +389,7 @@ function glissable(elem, etiquette, deposer) {
   elem.addEventListener("click", (e) => { if (elem._glisse) { e.stopPropagation(); e.preventDefault(); } }, true);
 }
 
+function cls(e, c) { e.classList.add(c); return e; }
 class PageNotes {
   constructor(app) {
     this.app = app;
@@ -421,12 +422,12 @@ class PageNotes {
     const tri = liste([["maj", "Modifiés récemment"], ["titre", "Titre (A → Z)"], ["cree", "Création"]], this.tri);
     tri.classList.add("nb-tri");
     tri.addEventListener("change", () => { this.tri = tri.value; this.memoUI(); this.grille(); });
-    const vue = boutonIcone(this.vue === "grille" ? "liste" : "grille", "", () => { this.vue = this.vue === "grille" ? "liste" : "grille"; this.memoUI(); this.bibliotheque(); }, "ghost");
+    const vue = boutonIcone(this.vue === "grille" ? "liste" : "grille", "", () => { this.vue = this.vue === "grille" ? "liste" : "grille"; this.memoUI(); this.bibliotheque(); }, "ghost"); vue.classList.add("nb-vue");
     this.titreFiltre = el("h1.page-h1");
     main.append(el("header.nb-tete", null, this.titreFiltre, el("span.espace"),
       el("div.nt-recherche-zone.nb-rech", null, icone("recherche", 18), this.recherche), tri, vue,
-      boutonIcone("exporter", "Importer", () => this.importer(), "ghost"),
-      boutonIcone("plus", "Nouveau", () => new NouveauDocument(this).montrer(), "primary")));
+      cls(boutonIcone("exporter", "Importer", () => this.importer(), "ghost"), "nb-importer"),
+      cls(boutonIcone("plus", "Nouveau", () => new NouveauDocument(this).montrer(), "primary"), "nb-nouveau")));
     this.zoneDocs = el("div.nb-docs" + (this.vue === "liste" ? ".liste-docs" : ""));
     main.append(this.zoneDocs);
     this.grille();
@@ -506,7 +507,7 @@ class PageNotes {
     if (!docs.length) {
       z.append(el("div.nt-vide", null, el("span.badge.grand", {style: {"--c": couleurApp("notes")}}, iconePage("notes", 40)),
         el("h2", {texte: this.q ? "Aucun résultat" : "Aucun document ici"}),
-        el("div.muted", {texte: "Crée un cahier pour écrire à l'Apple Pencil, ou une note texte."}),
+        el("div.muted", {texte: IPHONE ? "Crée une note texte. Les cahiers manuscrits se créent sur l'iPad ou le PC." : "Crée un cahier pour écrire à l'Apple Pencil, ou une note texte."}),
         boutonIcone("plus", "Nouveau", () => new NouveauDocument(this).montrer(), "primary")));
       return;
     }
@@ -532,10 +533,11 @@ class PageNotes {
     for (const ev of ["pointerdown", "pointerup", "touchstart", "mousedown"]) chev.addEventListener(ev, (e) => e.stopPropagation());
     chev.addEventListener("click", (e) => { e.stopPropagation(); e.preventDefault(); this.basculerRepli(n, c, chev); });
     chev.addEventListener("contextmenu", (e) => { e.stopPropagation(); e.preventDefault(); });
-    const c = el("div.doc" + (repliee ? ".repliee" : ""), {onclick: () => this.ouvrir(n.id)}, el("div.doc-contenu", null, vignette),
+    const surIpad = IPHONE && n.type === "cahier";       // cahier manuscrit : visible sur iPhone, mais il s'ouvre sur l'iPad ou le PC
+    const c = el("div.doc" + (repliee ? ".repliee" : "") + (surIpad ? ".sur-ipad" : ""), {onclick: () => this.ouvrir(n.id)}, el("div.doc-contenu", null, vignette),
       el("div.doc-info", null,
         el("div.doc-titre", null, chev, n.epingle ? el("span.nt-epi", null, icone("etoile", 13)) : null, el("b", {texte: n.titre || "Sans titre"})),
-        el("div.doc-sous", null, pastille(col, 7), el("span", {texte: [n.type === "cahier" ? `${n.pages.length} page${n.pages.length > 1 ? "s" : ""}` : "Texte", d ? dateCourte(d) : ""].filter(Boolean).join(" · ")}))),
+        el("div.doc-sous", null, pastille(col, 7), el("span", {texte: [n.type === "cahier" ? `${n.pages.length} page${n.pages.length > 1 ? "s" : ""}` : "Texte", d ? dateCourte(d) : "", surIpad ? "iPad / PC" : ""].filter(Boolean).join(" · ")}))),
       plus);
     glissable(c, () => n.titre || "Sans titre", (cle) => this.rangerNote(n, cle));
     c.addEventListener("contextmenu", (e) => { e.preventDefault(); if (!c._glisse && !document.body.classList.contains("glisse-en-cours")) new InfosDocument(this, n).montrer(); });
@@ -552,10 +554,31 @@ class PageNotes {
     const t = etait ? "Replier le contenu" : "Déplier le contenu";
     chev.title = t; chev.setAttribute("aria-label", t); chev.setAttribute("aria-expanded", String(etait));
   }
+  /* iPhone : seuls les fichiers texte deviennent des notes (un PDF ou une image deviendrait un cahier, qui ne s'ouvre pas ici) */
+  importerTexteIphone(cible) {
+    const inp = el("input", {type: "file", multiple: true, accept: ".txt,text/plain", style: {display: "none"}});
+    inp.addEventListener("change", async () => {
+      const fichiers = Array.from(inp.files || []); inp.remove();
+      if (!fichiers.length) return;
+      const textes = fichiers.filter(f => /\.txt$/i.test(f.name)), autres = fichiers.filter(f => !/\.txt$/i.test(f.name));
+      try {
+        const b = textes.length ? await importerDocuments(this.app, textes, null, cible) : {notes: 0, erreurs: []};
+        const lignes = [];
+        if (b.notes) lignes.push(`${b.notes} note${b.notes > 1 ? "s" : ""} importée${b.notes > 1 ? "s" : ""}.`);
+        const err = (b.erreurs || []).concat(autres.map(f => f.name + " : sur l'iPhone, seuls les fichiers TXT s'importent (les PDF et images deviennent des cahiers : importe-les sur l'iPad ou le PC)."));
+        if (err.length) lignes.push("Problèmes :\n" + err.slice(0, 8).join("\n"));
+        this.bibliotheque();
+        informer("Importation", lignes.join("\n\n") || "Rien à importer.");
+      } catch (e) { Stock.journal("importation", e); informer("Importation", "Erreur : " + (e && e.message || e)); }
+    });
+    document.body.append(inp);
+    inp.click();
+  }
   /* importer des documents : dans le dossier affiché (ou à la racine), ou dans un fichier précis (cible = {note}) */
   importer(cible) {
     cible = cible || {dossier: this.filtre.startsWith("d:") ? this.filtre.slice(2) : ""};
     const dansFichier = !!cible.note;
+    if (IPHONE && !dansFichier) return this.importerTexteIphone(cible);
     const inp = el("input", {type: "file", multiple: true, accept: dansFichier ? FORMATS_DOCUMENT : ".pdf,.zip,.json,.goodnotes,.txt,.jpg,.jpeg,.png,application/pdf,application/zip,application/json,application/octet-stream,text/plain,image/jpeg,image/png", style: {display: "none"}});
     inp.addEventListener("change", async () => {
       const fs = Array.from(inp.files || []); inp.remove();
@@ -585,6 +608,7 @@ class PageNotes {
     inp.click();
   }
   creer(opts) {
+    if (IPHONE && opts && opts.type === "cahier") { messageCahierIphone(); return null; }
     const n = normaliserNote(Object.assign({id: newId(), maj: nowIsoMinutes(), cours: this.filtre.startsWith("m:") ? this.filtre.slice(2) : "",
       dossier: this.filtre.startsWith("d:") ? this.filtre.slice(2) : "", epingle: this.filtre === "*"}, opts));
     if (n.type === "cahier") n.pages = [pageVide(n.fond)];
@@ -621,6 +645,12 @@ class PageNotes {
   ouvrir(id) {
     const n = this.note(id);
     if (!n) return this.bibliotheque();
+    if (IPHONE && n.type === "cahier") {                 // les cahiers manuscrits restent sur l'iPad et le PC
+      if (this.doc === id) { this.ed = null; this.doc = null; }
+      if (!this.el.querySelector(".nb-docs")) this.bibliotheque();
+      messageCahierIphone();
+      return;
+    }
     this.doc = id;
     const l = this.onglets().filter(x => x !== id);
     const i = (this.app.reglages.onglets_notes || []).indexOf(id);
@@ -663,9 +693,9 @@ class PageNotes {
 /* ---------- nouveau document / infos / dossier */
 class NouveauDocument extends Modal {
   constructor(pn) {
-    super("Nouveau", "Un cahier pour écrire à l'Apple Pencil, ou une note texte.");
+    super("Nouveau", IPHONE ? "Une note texte (les cahiers manuscrits se créent sur l'iPad ou le PC)." : "Un cahier pour écrire à l'Apple Pencil, ou une note texte.");
     this.pn = pn;
-    this.type = "cahier"; this.fond = "ligne"; this.papier = "blanc"; this.couv = COUVERTURES[Math.floor(Math.random() * COUVERTURES.length)];
+    this.type = IPHONE ? "texte" : "cahier"; this.fond = "ligne"; this.papier = "blanc"; this.couv = COUVERTURES[Math.floor(Math.random() * COUVERTURES.length)];
     this.titre = entree("", {placeholder: "Titre (facultatif)"});
     this.zone = el("div");
     this.carte.append(this.zone);
@@ -676,7 +706,7 @@ class NouveauDocument extends Modal {
   dessiner() {
     const z = this.zone; z.innerHTML = "";
     const types = el("div.choix-types");
-    for (const [v, t, d] of [["cahier", "Cahier", "Pages à écrire à la main"], ["texte", "Note texte", "Clavier ou Scribble"]]) {
+    for (const [v, t, d] of (IPHONE ? [["texte", "Note texte", "Les cahiers manuscrits se créent sur l'iPad ou le PC"]] : [["cahier", "Cahier", "Pages à écrire à la main"], ["texte", "Note texte", "Clavier ou Scribble"]])) {
       types.append(el("button.choix-type" + (this.type === v ? ".on" : ""), {type: "button", onclick: () => { this.type = v; this.dessiner(); }},
         icone(v === "cahier" ? "crayon" : "notes", 26), el("b", {texte: t}), el("span.petit.muted", {texte: d})));
     }

@@ -57,8 +57,8 @@ Object.assign(App.prototype, {
     const TOP = Math.round(76 * T.TXT);
     const ch = Math.max(this.gScroll.clientHeight - TOP, 260);
     this.hour = Math.max(40, Math.min(n > 1 ? 76 : 90, (ch - 2 * PAD) / (T.H_FIN - T.H_DEBUT)));
-    const cw = Math.max(this.gScroll.clientWidth, 400);
-    const colw = this.colw = Math.max(n > 1 ? (window.innerWidth < 900 ? 92 : 104) : 260, (cw - LEFT - 4) / n);
+    const cw = Math.max(this.gScroll.clientWidth, this.compact ? 200 : 400);
+    const colw = this.colw = Math.max(n > 1 ? (window.innerWidth < 900 ? 92 : 104) : (this.compact ? 120 : 260), (cw - LEFT - 4) / n);
     const totalW = LEFT + n * colw + 4, totalH = this.y(T.H_FIN * 60) + PAD;
     const a = aujourdhui();
     const dAuj = joursEntre(this.sem, a);
@@ -385,14 +385,14 @@ Object.assign(App.prototype, {
     const b = this.selId ? this.blocParId(this.selId) : null;
     if (!b && this.selId) this.selId = null;
     if (b) {
-      bar.append(pastille(couleur(b.cat), 9), el("span.bs-titre", {texte: `${b.titre || "Sans titre"}  ·  ${JOURS[b.jour].slice(0, 3).toLowerCase()}. ${fmt(b.debut)}–${fmt(b.fin)}`}),
+      bar.append(...[pastille(couleur(b.cat), 9), el("span.bs-titre", {texte: `${b.titre || "Sans titre"}  ·  ${JOURS[b.jour].slice(0, 3).toLowerCase()}. ${fmt(b.debut)}–${fmt(b.fin)}`}),
         petit("Modifier", () => new Editeur(this, b).montrer(), "primary"),
         petit("Copier", () => this.copierBloc()), petit("Couper", () => this.copierBloc(true)),
         petit("Dupliquer", () => this.dupliquerBloc()),
         this.pressePapier ? petit("Coller après", () => this.collerBloc()) : null,
         petit("Supprimer", () => this.supprimerBloc(), "danger"),
         this.undo.length ? petit("Annuler", () => this.annuler()) : null,
-        el("span.bs-x", {texte: "✕", onclick: () => { this.selId = null; this.dessinerGrille(); this.majSelection(); }}));
+        el("span.bs-x", {texte: "✕", onclick: () => { this.selId = null; this.dessinerGrille(); this.majSelection(); }})].filter(Boolean));   // jamais « null » affiché
     } else if (this.pressePapier || this.undo.length) {
       if (this.pressePapier) bar.append(el("span.bs-info.muted", {texte: `Presse-papiers : « ${tronquer(this.pressePapier.titre, 28)} » — touche une case vide pour coller`}));
       if (this.undo.length) bar.append(petit("Annuler", () => this.annuler()));
