@@ -36,7 +36,8 @@ class Editeur extends Modal {
       grille2(champ("Début", this.debut), champ("Fin", this.fin)),
       grille2(champ("Présence", this.statut), el("div.champ", null, etiquette("Suivi"), this.fait)),
       champ("Notes (devoirs, quoi apporter, rappel…)", this.note));
-    this.barre(b ? [bouton("Supprimer", () => this.supprimer(), "danger"), bouton("Dupliquer", () => this.dupliquer())] : [],
+    this.barre(b ? [bouton("Supprimer", () => this.supprimer(), "danger"), bouton("Dupliquer", () => this.dupliquer()),
+      boutonVocaux(app, {bloc: b.id, horaire: HID}, `Bloc : ${b.titre || "Sans titre"}`)] : [],
       [bouton("Annuler", () => this.fermer()), bouton("Enregistrer", () => this.valider(), "primary")]);
   }
   remplirCats(choix) {

@@ -314,6 +314,17 @@ function normaliserDossiers(l) {
 }
 
 /* ---------- données */
+/* messages vocaux : seules les fiches sont dans les données (le son reste sur l'appareil qui l'a créé) */
+function normaliserVocaux(l) {
+  const out = [], vus = new Set();
+  for (const v of Array.isArray(l) ? l : []) {
+    if (!v || typeof v !== "object" || !v.id || vus.has(String(v.id))) continue;
+    vus.add(String(v.id));
+    out.push(Object.assign({}, v, {id: String(v.id), nom: String(v.nom || "Message vocal"), duree: Math.max(0, Math.round(Number(v.duree) || 0)),
+      date: String(v.date || ""), appareil: String(v.appareil || ""), format: String(v.format || "").toLowerCase(), taille: Math.max(0, Math.round(Number(v.taille) || 0))}));
+  }
+  return out;
+}
 function normaliser(d) {
   d = d && typeof d === "object" ? d : {};
   const out = {version: 4, modele: [], semaines: {}, echeances: [], notes: [], reglages: {}, categories: categoriesDefaut(),
@@ -328,6 +339,7 @@ function normaliser(d) {
   out.dossiers = normaliserDossiers(out.dossiers);
   out.fichiers = normaliserFichiers(out.fichiers);
   out.modeles = normaliserModeles(out.modeles);
+  out.vocaux = normaliserVocaux(out.vocaux);
   out.horaires = listeHoraires(out);
   const ids = new Set(out.horaires.map(h => h.id));
   for (const k of Object.keys(out)) {
@@ -376,6 +388,9 @@ function sectionsDe(d) {
         out["n_" + n.id] = m;
         for (const p of n.pages || []) out["np_" + n.id + "_" + p.id] = Object.assign({traits: p.traits || [], textes: p.textes || []}, p.vide ? {vide: 1} : {});
       }
+    } else if (k === "vocaux") {
+      // messages vocaux : une section par fiche (deux appareils peuvent en ajouter en même temps sans se gêner)
+      for (const x of v || []) if (x && x.id) out["vx_" + x.id] = x;
     } else if (k.startsWith("h_") && v && typeof v === "object") {
       // autre horaire : une section pour l'horaire + une par semaine modifiée
       const r = {};
@@ -417,6 +432,13 @@ function poserSection(d, nom, valeur) {
     if (valeur.type === "cahier" && !(valeur.pages || []).length && contenu.size) return;      // jamais un cahier sans page
     nv.pages = (valeur.pages || []).map(pm => { const c = contenu.get(pm.id); return Object.assign({traits: c ? c.traits || [] : [], textes: c ? c.textes || [] : []}, c && c.vide ? {vide: 1} : {}, pm); });
     if (i >= 0) d.notes[i] = nv; else d.notes.push(nv);
+  } else if (nom.startsWith("vx_")) {
+    const id = nom.slice(3);
+    d.vocaux = Array.isArray(d.vocaux) ? d.vocaux : [];
+    const i = d.vocaux.findIndex(x => x.id === id);
+    if (valeur === null || typeof valeur !== "object") { if (i >= 0) d.vocaux.splice(i, 1); return; }
+    const v = normaliserVocaux([Object.assign({}, valeur, {id})])[0];
+    if (i >= 0) d.vocaux[i] = v; else d.vocaux.push(v);
   } else if (nom.startsWith("hs_")) {
     const i = nom.lastIndexOf("_"), id = nom.slice(3, i), l = nom.slice(i + 1);
     let ses = d["h_" + id];

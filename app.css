@@ -393,6 +393,9 @@ input[type="time"].saisie, input[type="date"].saisie { min-height: 42px; }
 .rail-lbl { font-size: calc(11.5px * var(--txt)); }
 .rail-item.actif .rail-lbl { font-weight: 700; }
 .rail-sync { font-size: 12px; cursor: pointer; padding: 4px; }
+/* beaucoup d'applications dans le menu sur un écran peu haut (iPad à l'horizontale) : boutons plus bas */
+@media (max-height: 880px) { body:not(.tel) .rail-item { min-height: 52px; } body:not(.tel) .rail-logo .logo-nom { display: none; } }
+@media (max-height: 740px) { body:not(.tel) .rail-item { min-height: 44px; gap: 1px; } body:not(.tel) .rail-lbl { font-size: 10px; } }
 
 /* cartes communes */
 .badge { width: 50px; height: 50px; flex: none; border-radius: calc(15px * var(--rad)); display: inline-flex; align-items: center; justify-content: center;
@@ -797,6 +800,52 @@ body.glisse-en-cours, body.glisse-en-cours * { cursor: grabbing !important; }
 .tr-nom { font-weight: 700; overflow-wrap: anywhere; }
 .tr-note { max-width: 760px; margin-top: 18px; }
 @media (max-width: 700px) { .ecran-transferts { padding-left: 16px; padding-right: 16px; } }
+
+/* ---------- messages vocaux */
+.carte-modale.vocaux { width: min(680px, 96vw); }
+.vx-rec { display: flex; align-items: center; gap: 14px; padding: 14px 16px; margin: 4px 0 14px; background: var(--surface2); }
+.vx-rec .espace { flex: 1; }
+.vx-rec-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.vx-rec .btn { min-height: 44px; }
+.vx-badge { width: 44px; height: 44px; color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--surface)); }
+.vx-rec.en-cours { border-color: var(--danger); }
+.vx-point { width: 14px; height: 14px; border-radius: 50%; background: var(--danger); flex: none; animation: vx-clignote 1.1s ease-in-out infinite; }
+@keyframes vx-clignote { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .vx-point { animation: none; } }
+.vx-chrono { font-size: calc(15px * var(--txt)); color: var(--ink); }
+.vx-outils { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.vx-outils .espace { flex: 1; }
+.vx-liste { max-height: min(46vh, 420px); overflow-y: auto; -webkit-overflow-scrolling: touch; border-top: 1px solid var(--rule); }
+.vx-vide { padding: 18px 2px; }
+.vx-ligne { display: flex; align-items: center; gap: 10px; padding: 10px 2px; border-bottom: 1px solid var(--rule); }
+.vx-ligne.nouveau { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.vx-ligne.ailleurs .vx-nom { color: var(--muted); }
+.vx-jouer { width: 44px; height: 44px; flex: none; border-radius: 50%; border: 1px solid var(--rule); background: var(--surface2); color: var(--ink);
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.vx-jouer.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.vx-jouer:disabled { opacity: .4; cursor: default; }
+.vx-infos { flex: 1; min-width: 0; }
+.vx-nom { font-weight: 700; overflow-wrap: anywhere; }
+.vx-prog { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.vx-barre { flex: 1; height: 8px; border-radius: 4px; background: var(--surface3); overflow: hidden; cursor: pointer; touch-action: manipulation; }
+.vx-barre span { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 4px; }
+.vx-temps { white-space: nowrap; }
+.vx-note { margin-top: 12px; }
+.btn-vocaux .vx-compte:empty { display: none; }
+body.tel .carte-modale.vocaux { width: 100%; }
+body.tel .vx-ligne { flex-wrap: wrap; }
+
+/* ---------- onglets YouTube et Musique (s'ouvrent dans le navigateur) */
+.ecran-lien { overflow-y: auto; -webkit-overflow-scrolling: touch; display: block; padding: max(26px, env(safe-area-inset-top)) max(34px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) 34px; }
+.lien-carte { display: flex; gap: 18px; align-items: flex-start; padding: 22px; max-width: 760px; }
+.lien-badge { color: var(--c); background: color-mix(in srgb, var(--c) 16%, var(--surface)); }
+.lien-txt { flex: 1; min-width: 0; }
+.lien-txt h2 { margin: 2px 0 6px; }
+.lien-actions { margin-top: 14px; }
+.lien-actions .btn { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+.lien-url { margin-top: 10px; }
+@media (max-width: 700px) { .ecran-lien { padding-left: 16px; padding-right: 16px; } }
+body.tel .ecran-lien { padding: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 24px max(14px, env(safe-area-inset-left)); }
 
 /* ================= iPhone (et tout petit écran) : body.tel =================
    Barre d'onglets en bas, contenu en une colonne, fenêtres en feuilles plein écran. Rien ne change sur iPad ni sur grand écran. */

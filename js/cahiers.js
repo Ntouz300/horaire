@@ -427,10 +427,16 @@ class PageNotes {
     main.append(el("header.nb-tete", null, this.titreFiltre, el("span.espace"),
       el("div.nt-recherche-zone.nb-rech", null, icone("recherche", 18), this.recherche), tri, vue,
       cls(boutonIcone("exporter", "Importer", () => this.importer(), "ghost"), "nb-importer"),
+      cls(this.boutonVocauxDossier(), "nb-vocaux"),
       cls(boutonIcone("plus", "Nouveau", () => new NouveauDocument(this).montrer(), "primary"), "nb-nouveau")));
     this.zoneDocs = el("div.nb-docs" + (this.vue === "liste" ? ".liste-docs" : ""));
     main.append(this.zoneDocs);
     this.grille();
+  }
+  /* messages vocaux du dossier affiché (ou tous les messages hors dossier) */
+  boutonVocauxDossier() {
+    const ds = this.app.donnees.dossiers || [], d = this.filtre.startsWith("d:") ? ds.find(x => x.id === this.filtre.slice(2)) : null;
+    return boutonVocaux(this.app, d ? {dossier: d.id} : {}, d ? `Dossier : ${d.nom}` : "Tous les messages", () => this.enregistrer());
   }
   /* ranger : un dossier dans un autre (ou à la racine), un document dans un dossier */
   deplacerDossier(d, cle) {
@@ -811,6 +817,7 @@ class EditeurTexte {
     this.el = el("div.doc-vue", null,
       el("header.doc-barre", null, boutonIcone("retour", "Bibliothèque", () => pn.fermerDoc(), "tab"), el("span.espace"), this.etat,
         boutonIcone("etoile", "", () => { n.epingle = !n.epingle; this.modifie(true); this.majFav(); }, "ghost"),
+        boutonVocaux(pn.app, {note: n.id}, `Note : ${n.titre || "Sans titre"}`, () => this.enregistrer()),
         boutonIcone("reglages", "", () => { this.enregistrer(); new InfosDocument(pn, n).montrer(); }, "ghost"),
         boutonIcone("exporter", "", () => { this.enregistrer(); new ExportNote(n, null).montrer(); }, "ghost")),
       el("section.carte.doc-texte-ed", {style: {background: pc.fond, color: pc.encre}}, this.titre, el("div.nt-sep"), this.texte));
@@ -887,6 +894,7 @@ class EditeurCahier {
       boutonIcone("zoom-moins", "", () => this.setZoom(this.zoom / 1.2), "ghost"), el("span.mono.cah-zoom", {texte: ""}),
       boutonIcone("zoom-plus", "", () => this.setZoom(this.zoom * 1.2), "ghost"),
       boutonIcone("page-plus", "Page", () => this.menuPage(), "ghost"),
+      boutonVocaux(this.pn.app, {note: n.id}, `Note : ${n.titre || "Sans titre"}`, () => this.enregistrer()),
       boutonIcone("exporter", "", () => { this.enregistrer(); new ExportNote(this.n, this.pageCourante).montrer(); }, "ghost"),
       boutonIcone("reglages", "", () => { this.enregistrer(); new InfosDocument(this.pn, n).montrer(); }, "ghost"));
     this.barreOutils = el("div.cah-outils");
