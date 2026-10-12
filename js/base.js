@@ -314,6 +314,25 @@ function normaliserDossiers(l) {
 }
 
 /* ---------- données */
+/* traces des notes supprimées exprès : {id: moment (ms)}. Elles empêchent une note supprimée de revenir
+   (appareil fermé au moment de la suppression, pages restées sur le serveur…). Gardées un an. */
+const TOMBE_JOURS = 365;
+function normaliserTombes(t) {
+  const out = {}, limite = Date.now() - TOMBE_JOURS * 86400000;
+  for (const [k, v] of Object.entries(t && typeof t === "object" && !Array.isArray(t) ? t : {})) {
+    const n = Math.round(Number(v));
+    if (k && isFinite(n) && n > limite) out[k] = n;
+  }
+  return out;
+}
+function noteEnterree(d, id) { return !!id && !!d && !!d.notes_supprimees && id in d.notes_supprimees; }
+/* suppression voulue d'une note : trace synchronisée (nx_<id>) + suppression envoyée au serveur */
+function enterrerNote(app, id) {
+  if (!id) return;
+  if (!app.donnees.notes_supprimees || typeof app.donnees.notes_supprimees !== "object") app.donnees.notes_supprimees = {};
+  app.donnees.notes_supprimees[id] = Date.now();
+  app.sync.marquerSuppression(id);
+}
 /* messages vocaux : seules les fiches sont dans les données (le son reste sur l'appareil qui l'a créé) */
 function normaliserVocaux(l) {
   const out = [], vus = new Set();
@@ -340,6 +359,8 @@ function normaliser(d) {
   out.fichiers = normaliserFichiers(out.fichiers);
   out.modeles = normaliserModeles(out.modeles);
   out.vocaux = normaliserVocaux(out.vocaux);
+  out.notes_supprimees = normaliserTombes(out.notes_supprimees);
+  out.notes = out.notes.filter(n => !(n.id in out.notes_supprimees));      // une note supprimée exprès ne revient jamais
   out.horaires = listeHoraires(out);
   const ids = new Set(out.horaires.map(h => h.id));
   for (const k of Object.keys(out)) {
@@ -388,6 +409,9 @@ function sectionsDe(d) {
         out["n_" + n.id] = m;
         for (const p of n.pages || []) out["np_" + n.id + "_" + p.id] = Object.assign({traits: p.traits || [], textes: p.textes || []}, p.vide ? {vide: 1} : {});
       }
+    } else if (k === "notes_supprimees") {
+      // une trace par note supprimée exprès : l'autre appareil saura que l'absence de la note est voulue
+      for (const [id, t] of Object.entries(v || {})) out["nx_" + id] = {t};
     } else if (k === "vocaux") {
       // messages vocaux : une section par fiche (deux appareils peuvent en ajouter en même temps sans se gêner)
       for (const x of v || []) if (x && x.id) out["vx_" + x.id] = x;
@@ -406,15 +430,15 @@ function poserSection(d, nom, valeur) {
     if (!Array.isArray(valeur)) return;
     if (valeur.length && typeof valeur[0] === "object") { d.notes = valeur.map(normaliserNote); return; }   // ancien format
     const par = new Map((d.notes || []).map(n => [n.id, n]));
-    const liste = valeur.map(id => par.get(id) || {id, pages: []});
+    const liste = valeur.filter(id => par.has(id)).map(id => par.get(id));        // l'ordre seulement : une note arrive par n_<id>
     for (const n of d.notes || []) if (!valeur.includes(n.id)) liste.push(n);    // supprimées seulement par n_<id>
     d.notes = liste;
   } else if (nom.startsWith("np_")) {
     const [, nid, pid] = nom.split("_");
-    if (valeur === null) return;                                                 // une page retirée l'est par n_<id>
+    if (valeur === null || noteEnterree(d, nid)) return;                         // une page retirée l'est par n_<id> ; jamais de page d'une note supprimée
     d.notes = d.notes || [];
-    let n = d.notes.find(x => x.id === nid);
-    if (!n) { n = {id: nid, pages: []}; d.notes.push(n); }
+    const n = d.notes.find(x => x.id === nid);
+    if (!n) return;                                                              // page sans sa note (reste d'une ancienne suppression) : ignorée
     n.pages = n.pages || [];
     let p = n.pages.find(x => x.id === pid);
     if (!p) { p = {id: pid, f: "ligne", h: PAGE_H}; n.pages.push(p); }
@@ -426,12 +450,18 @@ function poserSection(d, nom, valeur) {
     d.notes = d.notes || [];
     const i = d.notes.findIndex(x => x.id === id);
     if (valeur === null) { if (i >= 0) d.notes.splice(i, 1); return; }
+    if (noteEnterree(d, id)) return;                                             // note supprimée exprès : elle ne revient pas
     const anc = i >= 0 ? d.notes[i] : null;
     const contenu = new Map(((anc && anc.pages) || []).map(p => [p.id, p]));
     const nv = Object.assign({}, valeur);
     if (valeur.type === "cahier" && !(valeur.pages || []).length && contenu.size) return;      // jamais un cahier sans page
     nv.pages = (valeur.pages || []).map(pm => { const c = contenu.get(pm.id); return Object.assign({traits: c ? c.traits || [] : [], textes: c ? c.textes || [] : []}, c && c.vide ? {vide: 1} : {}, pm); });
     if (i >= 0) d.notes[i] = nv; else d.notes.push(nv);
+  } else if (nom.startsWith("nx_")) {
+    const id = nom.slice(3);
+    if (!d.notes_supprimees || typeof d.notes_supprimees !== "object") d.notes_supprimees = {};
+    if (valeur && typeof valeur === "object") { d.notes_supprimees[id] = Math.round(Number(valeur.t) || 0); d.notes = (d.notes || []).filter(n => n.id !== id); }
+    else delete d.notes_supprimees[id];
   } else if (nom.startsWith("vx_")) {
     const id = nom.slice(3);
     d.vocaux = Array.isArray(d.vocaux) ? d.vocaux : [];

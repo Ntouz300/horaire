@@ -598,7 +598,8 @@ class App {
         for (const k of REG_LOCAUX) if (k in this.donnees.reglages) loc[k] = this.donnees.reglages[k];
         st.reglages = Object.assign({}, st.reglages, loc);
         const gardees = new Set((st.notes || []).map(n => n.id));
-        for (const n of this.donnees.notes || []) if (!gardees.has(n.id)) this.sync.marquerSuppression(n.id);     // remplacement voulu
+        for (const n of this.donnees.notes || []) if (!gardees.has(n.id)) enterrerNote(this, n.id);     // remplacement voulu
+        st.notes_supprimees = Object.assign({}, this.donnees.notes_supprimees || {}, st.notes_supprimees || {});
         this.donnees = st;
         activerHoraire(metaHoraire(st, st.reglages.horaire || "aut26"));
         appliquerCategories(st.categories);

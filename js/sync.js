@@ -25,6 +25,11 @@ class Synchro {
   /* une note n'est retirée du serveur que si l'utilisateur l'a supprimée (jamais parce qu'elle manque ici par accident) */
   marquerSuppression(id) { if (id && !this.cfg.supprimees.includes(id)) { this.cfg.supprimees.push(id); this.ecrireCfg(); } }
   suppressionVoulue(nom) { return nom.startsWith("n_") && this.cfg.supprimees.includes(nom.slice(2)); }
+  /* section (n_ ou np_) d'une note supprimée exprès, ici ou sur l'autre appareil (trace nx_<id>) */
+  enterree(nom) {
+    const id = nom.startsWith("n_") ? nom.slice(2) : nom.startsWith("np_") ? nom.split("_")[1] : null;
+    return !!id && (noteEnterree(this.app.donnees, id) || !!this.distant["nx_" + id]);
+  }
 
   configuree() { return !!(this.cfg.url && this.cfg.cle); }
   ecrireCfg() { Stock.ecrire("horaire_synchro", this.cfg); }
@@ -159,6 +164,13 @@ class Synchro {
       const loc = nom in locales ? canon(locales[nom]) : null;
       const b = nom in base ? base[nom] : null;
       const rv = this.distant[nom];
+      if (this.enterree(nom)) {
+        // note supprimée exprès : jamais réappliquée ni renvoyée ; on la retire d'ici et ce qui en reste sur le serveur
+        if (loc !== null) aAppliquer[nom] = null;
+        if (rv) aEnvoyer.push(nom); else delete base[nom];
+        continue;
+      }
+      if (nom.startsWith("np_") && loc === null && !this.distant["n_" + nom.split("_")[1]]) { delete base[nom]; continue; }   // page restée sans sa note : ignorée
       if (!rv || typeof rv.j !== "string") {
         if (nom.startsWith("np_") && loc !== null && this.distant["n_" + nom.split("_")[1]]) {
           aEnvoyer.push(nom);                // page disparue du serveur alors que sa note y est encore : on garde le contenu d'ici et on le renvoie
@@ -237,9 +249,10 @@ class Synchro {
     const locales = sectionsDe(this.app.donnees);
     const lot = {}, now = Date.now();
     for (const n of noms) {
-      const j = n in locales ? canon(locales[n]) : null;
-      if (j === null && n.startsWith("np_")) { delete this.cfg.base[n]; continue; }               // une page retirée l'est par n_<id> : jamais de suppression de contenu de page
-      if (j === null && n.startsWith("n_") && !this.suppressionVoulue(n)) {
+      const ent = this.enterree(n);
+      const j = ent ? null : n in locales ? canon(locales[n]) : null;                             // note supprimée exprès : seulement des suppressions
+      if (j === null && n.startsWith("np_") && !ent) { delete this.cfg.base[n]; continue; }       // une page retirée l'est par n_<id> : jamais de suppression de contenu de page
+      if (j === null && n.startsWith("n_") && !ent && !this.suppressionVoulue(n)) {
         this._ignorees = this._ignorees || new Set();
         if (!this._ignorees.has(n)) { this._ignorees.add(n); Stock.journal("suppression de note non voulue ignorée", n); }
         continue;

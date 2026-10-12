@@ -833,7 +833,7 @@ class PageNotes {
   /* retire un document (sans demander) ; le PDF d'origine part s'il ne sert plus, ni à un document ni à des documents copiés */
   retirer(n) {
     const l = this.app.donnees.notes, i = l.indexOf(n);
-    this.app.sync.marquerSuppression(n.id);                 // suppression voulue : elle part vers le serveur
+    enterrerNote(this.app, n.id);                           // suppression voulue : trace synchronisée, elle part vers le serveur
     if (i >= 0) l.splice(i, 1);
     const ids = new Set((n.pages || []).filter(p => p.pdf).map(p => p.pdf[0]));
     const encore = l.concat(this.app.presseNotes || []);

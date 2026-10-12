@@ -205,6 +205,7 @@ class NoteEditeur extends Modal {
     if (!await dialogue("Supprimer la note", `Supprimer « ${this.n.titre || ""} » ?`, [["Annuler", false, "ghost"], ["Supprimer", true, "danger"]])) return;
     const l = this.app.donnees.notes, i = l.indexOf(this.n);
     if (i >= 0) l.splice(i, 1);
+    enterrerNote(this.app, this.n.id);
     this.fermer();
     this.app.changement();
   }
