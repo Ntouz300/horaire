@@ -123,6 +123,11 @@ function distSeg(px, py, x0, y0, x1, y1) {
   const t = l2 ? Math.max(0, Math.min(1, ((px - x0) * dx + (py - y0) * dy) / l2)) : 0;
   return Math.hypot(px - x0 - t * dx, py - y0 - t * dy);
 }
+function toucheTexte(tx, x, y, r) {
+  const w = tx.w || 420, h = hauteurTexte(tx);
+  const cx = Math.min(Math.max(x, tx.x), tx.x + w), cy = Math.min(Math.max(y, tx.y), tx.y + h);
+  return Math.hypot(x - cx, y - cy) < r;
+}
 function touche(tr, x, y, r) {
   const p = tr.p, m = r + (tr.e || 3) / 2;
   if (p.length <= 3) return Math.hypot(p[0] - x, p[1] - y) < m;
@@ -735,6 +740,9 @@ class EditeurCahier {
   }
   gommer(f, x, y) {
     const r = this.epaisseur() / 2, p = f.page;
+    const avantTx = (p.textes || []).length;
+    p.textes = (p.textes || []).filter(tx => !toucheTexte(tx, x, y, r));
+    if (p.textes.length !== avantTx) this.peindre(p.id);
     if (!this.gommePrecise) {
       const avant = p.traits.length;
       p.traits = p.traits.filter(tr => !touche(tr, x, y, r));
