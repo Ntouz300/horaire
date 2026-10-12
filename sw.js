@@ -1,8 +1,8 @@
 /* Service worker : l'app s'ouvre même sans Internet (les données restent sur l'iPad et se synchronisent au retour). */
-const VERSION = "horaire-v12";
-const FICHIERS = ["./", "index.html", "app.css?v=12", "manifest.webmanifest", "icones/icone-180.png", "icones/icone-192.png", "icones/icone-512.png",
-  "js/base.js?v=12", "js/stickers.js?v=12", "js/icones.js?v=12", "js/ui.js?v=12", "js/sync.js?v=12", "js/main.js?v=12", "js/grille.js?v=12", "js/panneaux.js?v=12", "js/editeurs.js?v=12",
-  "js/horloge.js?v=12", "js/dessin.js?v=12", "js/menu.js?v=12", "js/cahiers.js?v=12", "js/pdfs.js?v=12", "js/exports.js?v=12", "js/objets3d.js?v=12",
+const VERSION = "horaire-v13";
+const FICHIERS = ["./", "index.html", "app.css?v=13", "manifest.webmanifest", "icones/icone-180.png", "icones/icone-192.png", "icones/icone-512.png",
+  "js/base.js?v=13", "js/stickers.js?v=13", "js/icones.js?v=13", "js/ui.js?v=13", "js/sync.js?v=13", "js/main.js?v=13", "js/grille.js?v=13", "js/panneaux.js?v=13", "js/editeurs.js?v=13",
+  "js/horloge.js?v=13", "js/dessin.js?v=13", "js/menu.js?v=13", "js/cahiers.js?v=13", "js/pdfs.js?v=13", "js/exports.js?v=13", "js/objets3d.js?v=13",
   "js/vendor/pdf.min.mjs", "js/vendor/pdf.worker.min.mjs"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(FICHIERS)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => {

@@ -245,6 +245,53 @@ function reconnaitreForme(p) {
 }
 
 /* ---------- application « Notes » */
+/* glisser-déposer (doigt, Apple Pencil, souris) : maintenir ~0,35 s (souris : glisser) puis lâcher sur un élément [data-depot] */
+function glissable(elem, etiquette, deposer) {
+  let minuterie = null, x0 = 0, y0 = 0, actif = false, fantome = null, cible = null, id = null;
+  const placer = (x, y) => {
+    fantome.style.transform = `translate(${x + 14}px, ${y + 14}px)`;
+    const s = document.elementFromPoint(x, y), c = s && s.closest("[data-depot]");
+    const n = c && c !== elem ? c : null;
+    if (n !== cible) { if (cible) cible.classList.remove("depot-sur"); cible = n; if (cible) cible.classList.add("depot-sur"); }
+  };
+  const activer = (x, y) => {
+    actif = true;
+    fantome = el("div.fantome-glisse", {texte: etiquette()});
+    document.body.append(fantome); document.body.classList.add("glisse-en-cours");
+    try { elem.setPointerCapture(id); } catch (e) { /* */ }
+    placer(x, y);
+  };
+  const nettoyer = () => {
+    clearTimeout(minuterie); minuterie = null;
+    if (fantome) fantome.remove();
+    if (cible) cible.classList.remove("depot-sur");
+    if (actif) { elem._glisse = true; setTimeout(() => { elem._glisse = false; }, 80); }
+    document.body.classList.remove("glisse-en-cours");
+    fantome = null; cible = null; actif = false; id = null;
+  };
+  elem.addEventListener("pointerdown", (e) => {
+    if (e.button > 0) return;
+    id = e.pointerId; x0 = e.clientX; y0 = e.clientY;
+    if (e.pointerType !== "mouse") minuterie = setTimeout(() => { minuterie = null; activer(x0, y0); }, 350);
+  });
+  elem.addEventListener("pointermove", (e) => {
+    if (e.pointerId !== id) return;
+    if (actif) { placer(e.clientX, e.clientY); return; }
+    const d = Math.hypot(e.clientX - x0, e.clientY - y0);
+    if (e.pointerType === "mouse" && (e.buttons & 1) && d > 6) activer(e.clientX, e.clientY);
+    else if (d > 10) { clearTimeout(minuterie); minuterie = null; }
+  });
+  elem.addEventListener("pointerup", (e) => {
+    if (e.pointerId !== id) return;
+    const c = actif && cible ? cible.dataset.depot : null;
+    nettoyer();
+    if (c) deposer(c);
+  });
+  elem.addEventListener("pointercancel", nettoyer);
+  elem.addEventListener("touchmove", (e) => { if (actif) e.preventDefault(); }, {passive: false});
+  elem.addEventListener("click", (e) => { if (elem._glisse) { e.stopPropagation(); e.preventDefault(); } }, true);
+}
+
 class PageNotes {
   constructor(app) {
     this.app = app;
@@ -287,6 +334,23 @@ class PageNotes {
     main.append(this.zoneDocs);
     this.grille();
   }
+  /* ranger : un dossier dans un autre (ou à la racine), un document dans un dossier */
+  deplacerDossier(d, cle) {
+    const ds = this.app.donnees.dossiers || [], cible = cle && cle.startsWith("d:") ? ds.find(x => x.id === cle.slice(2)) : null;
+    if (cle !== "racine" && !cible) return;
+    if (cible && (cible.id === d.id || cible.nom.startsWith(d.nom + " › "))) { informer("Déplacement impossible", "Un dossier ne peut pas aller dans lui-même ni dans un de ses sous-dossiers."); return; }
+    const base = d.nom.split(" › ").pop(), avant = cible ? cible.nom + " › " : "";
+    let nv = avant + base, i = 2;
+    while (ds.some(x => x.nom === nv && x.id !== d.id && !x.nom.startsWith(d.nom + " › "))) nv = avant + base + " (" + i++ + ")";
+    if (nv === d.nom) return;
+    const ancien = d.nom;
+    for (const x of ds) if (x.nom === ancien || x.nom.startsWith(ancien + " › ")) x.nom = nv + x.nom.slice(ancien.length);
+    this.app.sauver(); this.bibliotheque();
+  }
+  rangerNote(n, cle) {
+    if (cle === "racine") n.dossier = ""; else if (cle && cle.startsWith("d:")) n.dossier = cle.slice(2); else return;
+    this.app.sauver(); this.bibliotheque();
+  }
   cote(c) {
     const notes = this.app.donnees.notes, dossiers = this.app.donnees.dossiers || [];
     const semaine = iso(ajouterJours(aujourdhui(), -7));
@@ -295,6 +359,7 @@ class PageNotes {
     c.append(el("h2.nt-h", {texte: "Notes"}));
     c.append(el("div.etiquette", {texte: "BIBLIOTHÈQUE"}));
     item("", "Tous les documents", notes.length, icone("notes", 18));
+    c.lastChild.dataset.depot = "racine";
     item("*", "Favoris", notes.filter(n => n.epingle).length, icone("etoile", 18));
     item("~", "Récents", notes.filter(n => (n.maj || "") >= semaine).length, icone("horloge", 18));
     c.append(el("div.nb-sous", null, el("div.etiquette", {texte: "DOSSIERS"}), el("button.nb-mini", {type: "button", title: "Nouveau dossier", onclick: () => new EditeurDossier(this, null).montrer()}, icone("plus", 16))));
@@ -303,7 +368,9 @@ class PageNotes {
       const parts = d.nom.split(" › ");
       const b = el("button.nt-carnet" + (this.filtre === "d:" + d.id ? ".actif" : ""), {type: "button", title: d.nom, style: {paddingLeft: (parts.length > 1 ? 10 + 16 * (parts.length - 1) : 10) + "px"}, onclick: () => { this.filtre = "d:" + d.id; this.bibliotheque(); }},
         el("span.dossier-ico", {style: {"--c": d.couleur}}), el("span.nt-nom", {texte: parts[parts.length - 1]}), el("span.mono.muted", {texte: String(notes.filter(n => n.dossier === d.id).length)}));
-      b.addEventListener("contextmenu", (e) => { e.preventDefault(); new EditeurDossier(this, d).montrer(); });
+      b.dataset.depot = "d:" + d.id;
+      glissable(b, () => "📁 " + parts[parts.length - 1], (cle) => this.deplacerDossier(d, cle));
+      b.addEventListener("contextmenu", (e) => { e.preventDefault(); if (!b._glisse && !document.body.classList.contains("glisse-en-cours")) new EditeurDossier(this, d).montrer(); });
       const mod = el("span.nb-mod", {title: "Modifier", onclick: (e) => { e.stopPropagation(); new EditeurDossier(this, d).montrer(); }}, icone("crayon", 14));
       b.append(mod);
       c.append(b);
@@ -366,7 +433,8 @@ class PageNotes {
         el("div.doc-titre", null, n.epingle ? el("span.nt-epi", null, icone("etoile", 13)) : null, el("b", {texte: n.titre || "Sans titre"})),
         el("div.doc-sous", null, pastille(col, 7), el("span", {texte: [n.type === "cahier" ? `${n.pages.length} page${n.pages.length > 1 ? "s" : ""}` : "Texte", d ? dateCourte(d) : ""].filter(Boolean).join(" · ")}))),
       plus);
-    c.addEventListener("contextmenu", (e) => { e.preventDefault(); new InfosDocument(this, n).montrer(); });
+    glissable(c, () => n.titre || "Sans titre", (cle) => this.rangerNote(n, cle));
+    c.addEventListener("contextmenu", (e) => { e.preventDefault(); if (!c._glisse && !document.body.classList.contains("glisse-en-cours")) new InfosDocument(this, n).montrer(); });
     return c;
   }
   importer() {
@@ -718,10 +786,17 @@ class EditeurCahier {
     f.alloue = true;
   }
   liberer(f) { if (!f.alloue) return; f.cv.width = 0; f.cv.height = 0; f.alloue = false; f.aDessiner = true; }
+  /* marges de chaque côté de la page : on la pousse à gauche ou à droite à la main, elle ne se recentre jamais */
+  marges() {
+    const pz = this.pagesZone, m = Math.round(pz.clientWidth * 0.6), avant = parseFloat(this.piste.style.paddingLeft) || 14;
+    if (Math.abs(avant - (14 + m)) < 1) return;
+    this.piste.style.paddingLeft = (14 + m) + "px"; this.piste.style.paddingRight = (46 + m) + "px";
+    if (this._centre) pz.scrollLeft += 14 + m - avant;
+    else if (pz.scrollWidth > pz.clientWidth) { pz.scrollLeft = (pz.scrollWidth - pz.clientWidth) / 2; this._centre = true; }
+  }
   redimensionner() {
     const W = this.largeurBase() * this.zoom;
-    // la page est centrée une seule fois à l'ouverture ; ensuite on la pousse à la main où on veut, sans recentrage
-    if (!this._centre && this.pagesZone.scrollWidth > this.pagesZone.clientWidth) { this.pagesZone.scrollLeft = (this.pagesZone.scrollWidth - this.pagesZone.clientWidth) / 2; this._centre = true; }
+    this.marges();
     for (const f of this.feuilles.values()) if (Math.abs(f.k * PAGE_L - W) > 1) this.dimensionner(f, W);
     for (const f of this.feuilles.values()) if (this.visible(f) && f.aDessiner) this.peindre(f.page.id);
   }
