@@ -123,41 +123,57 @@ function distSeg(px, py, x0, y0, x1, y1) {
   const t = l2 ? Math.max(0, Math.min(1, ((px - x0) * dx + (py - y0) * dy) / l2)) : 0;
   return Math.hypot(px - x0 - t * dx, py - y0 - t * dy);
 }
+/* gribouillis pour effacer : allers-retours amples, dans un sens ou dans l'autre */
+function allersRetours(vals, seuil) {
+  let dir = 0, ext = vals[0], n = 0;
+  for (const v of vals) {
+    if (!dir) { if (Math.abs(v - ext) >= seuil) { dir = Math.sign(v - ext); ext = v; } continue; }
+    if ((v - ext) * dir > 0) ext = v;
+    else if ((ext - v) * dir >= seuil) { n++; dir = -dir; ext = v; }
+  }
+  return n;
+}
 function estGribouillis(pts) {
-  const n = pts.length / 3;
-  if (n < 12) return false;
-  let a = 1e9, b = 1e9, c = -1e9, d = -1e9, lg = 0;
-  for (let i = 0; i < pts.length; i += 3) {
-    a = Math.min(a, pts[i]); c = Math.max(c, pts[i]); b = Math.min(b, pts[i + 1]); d = Math.max(d, pts[i + 1]);
-    if (i) lg += Math.hypot(pts[i] - pts[i - 3], pts[i + 1] - pts[i - 2]);
+  if (pts.length / 3 < 8) return false;
+  const xs = [], ys = [];
+  for (let i = 0; i < pts.length; i += 3) { xs.push(pts[i]); ys.push(pts[i + 1]); }
+  const w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys);
+  if (Math.max(w, h) < 20 || Math.max(w, h) > 800) return false;
+  if (allersRetours(xs, Math.max(10, .35 * w)) >= 3) return true;
+  const rv = allersRetours(ys, Math.max(10, .45 * h));
+  return rv >= 4 && w / (rv + 1) <= .6 * h;   // zigzag serré, pas une écriture ondulée
+}
+/* largeur réellement occupée par un texte tapé (pas toute la boîte) */
+function largeurTexte(t) {
+  const lignes = String(t.t || "").split("\n"), s = t.s || 28;
+  return Math.min(t.w || 420, Math.max(20, ...lignes.map(l => l.length * s * .55)));
+}
+function croise(tr, scr) {
+  const q = scr.p;
+  for (let i = 0; i < q.length; i += 3) {
+    if (touche(tr, q[i], q[i + 1], 4)) return true;
+    if (i) {   // points intermédiaires : un geste rapide laisse de grands segments
+      const dx = q[i] - q[i - 3], dy = q[i + 1] - q[i - 2], n = Math.floor(Math.hypot(dx, dy) / 4);
+      for (let j = 1; j < n; j++) if (touche(tr, q[i - 3] + dx * j / n, q[i - 2] + dy * j / n, 4)) return true;
+    }
   }
-  const w = c - a, h = d - b, g = Math.max(w, h);
-  if (g < 30 || g > 600 || lg < 3.2 * g) return false;
-  const k = w >= h ? 0 : 1;
-  let rev = 0, dern = 0, ref = pts[k];
-  for (let i = 3; i < pts.length; i += 3) {
-    const v = pts[i + k];
-    if (Math.abs(v - ref) < 6) continue;
-    const sens = v > ref ? 1 : -1;
-    if (dern && sens !== dern) rev++;
-    dern = sens; ref = v;
-  }
-  return rev >= 4;
+  return false;
 }
 function effacerSousGribouillis(page, scr) {
-  const [x0, y0, x1, y1] = boiteTrait(scr), m = 8;
+  const [x0, y0, x1, y1] = boiteTrait(scr), m = 12;
   let change = false;
   const gardes = page.traits.filter(tr => {
+    if (tr === scr) return true;
     const q = tr.p, n = q.length / 3;
     let dedans = 0;
     for (let i = 0; i < q.length; i += 3) if (q[i] >= x0 - m && q[i] <= x1 + m && q[i + 1] >= y0 - m && q[i + 1] <= y1 + m) dedans++;
-    if (n && dedans >= 0.6 * n) { change = true; return false; }
+    if (n && dedans >= .5 * n && croise(tr, scr)) { change = true; return false; }
     return true;
   });
   const textes = (page.textes || []).filter(t => {
-    const tw = t.w || 420, th = hauteurTexte(t);
-    const ox = Math.max(0, Math.min(x1, t.x + tw) - Math.max(x0, t.x)), oy = Math.max(0, Math.min(y1, t.y + th) - Math.max(y0, t.y));
-    if (ox * oy >= 0.5 * tw * th) { change = true; return false; }
+    const tw = largeurTexte(t), th = hauteurTexte(t);
+    const ox = Math.max(0, Math.min(x1 + m, t.x + tw) - Math.max(x0 - m, t.x)), oy = Math.max(0, Math.min(y1 + m, t.y + th) - Math.max(y0 - m, t.y));
+    if (ox * oy >= .4 * tw * th) { change = true; return false; }
     return true;
   });
   if (change) { page.traits = gardes; page.textes = textes; }
