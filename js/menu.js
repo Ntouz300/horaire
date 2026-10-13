@@ -29,6 +29,7 @@ function couleurApp(page) {
 /* icône d'une page ; en thème Minecraft, le sticker pixel-art correspondant */
 function iconePage(page, taille = 22) {
   const j = iconesJeu();
+  if (j && j.ligne && j.page[page]) return icone(j.page[page], taille);
   if (j && j.page[page]) {
     return el("img.ico-pixel", {src: spriteURL(j.page[page], 4), alt: "", style: {width: taille + "px", height: taille + "px"}});
   }
@@ -63,6 +64,93 @@ function moyenneGenerale(ses) {
 }
 function barreProgres(frac, col, classe = "") {
   return el("div.prog-barre" + classe, null, el("span", {style: {width: Math.max(0, Math.min(1, frac)) * 100 + "%", background: col}}));
+}
+
+/* ---------- thème Hollow Knight : geo, jauge de masques, carte des horaires (mêmes calculs que sur le PC) */
+function themeHK() { return T.DECOR === "hollow"; }
+/* geo : 10 par échéance terminée dans l'horaire actif (calculé, rien de nouveau n'est enregistré) */
+function geoHoraire(ses) { return ((ses && ses.echeances) || []).filter(e => e.fait).length * 10; }
+function geoPastille(app) {
+  return el("div.geo", {title: "10 geo par échéance terminée dans cet horaire"}, icone("hk_geo", 18), el("b", {texte: String(geoHoraire(app.ses))}), el("span", {texte: "geo"}));
+}
+function masqueSVG(plein, taille) {
+  const p = [];
+  for (let i = 0; i < MASQUE_HK.length; i += 2) p.push(MASQUE_HK[i] + " " + MASQUE_HK[i + 1]);
+  const yeux = plein ? '<circle cx="9.2" cy="11.4" r="1.65"/><circle cx="14.8" cy="11.4" r="1.65"/>' : "";
+  return `<svg width="${taille}" height="${taille}" viewBox="0 0 24 24" class="${plein ? "plein" : "vide"}" aria-hidden="true"><path d="M${p.join(" L")} Z" stroke-width="1.4" stroke-linejoin="round"/>${yeux}</svg>`;
+}
+/* 5 masques : la part de l'objectif atteinte (arrondie au masque près) */
+function nbMasques(frac) { return Math.max(0, Math.min(5, Math.round((Number(frac) || 0) * 5))); }
+function jaugeMasques(frac, taille = 20, titre = "") {
+  const n = nbMasques(frac);
+  const s = el("span.masques", {title: titre || `${n} masque${n > 1 ? "s" : ""} sur 5`});
+  s.innerHTML = Array.from({length: 5}, (_, i) => masqueSVG(i < n, taille)).join("");
+  return s;
+}
+function graineTexte(t) { let h = 2166136261; for (const ch of String(t)) { h ^= ch.codePointAt(0); h = Math.imul(h, 16777619) >>> 0; } return h || 1; }
+function aleaGraine(g) { let x = (g >>> 0) || 1; return () => { x ^= x << 13; x >>>= 0; x ^= x >>> 17; x ^= x << 5; x >>>= 0; return x / 4294967296; }; }
+/* contour bosselé d'une salle de la carte (super-ellipse + petits écarts tirés de l'id) */
+function contourSalle(cx, cy, w, h, graine) {
+  const a = aleaGraine(graine), pts = [];
+  for (let k = 0; k < 32; k++) {
+    const t = k / 32 * 2 * Math.PI, c = Math.cos(t), s = Math.sin(t);
+    pts.push([cx + (w / 2 - 4) * Math.sign(c) * Math.pow(Math.abs(c), .45) + (a() - .5) * 6,
+      cy + (h / 2 - 4) * Math.sign(s) * Math.pow(Math.abs(s), .45) + (a() - .5) * 6]);
+  }
+  return pts;
+}
+/* disposition des salles : colonnes en serpentin (gauche → droite, puis droite → gauche) */
+function dispositionCarte(n, cols, largeur, hauteurLigne) {
+  const out = [], lc = largeur / cols;
+  for (let i = 0; i < n; i++) {
+    const r = Math.floor(i / cols), k = i % cols, col = r % 2 ? cols - 1 - k : k;
+    out.push([col * lc + lc / 2, r * hauteurLigne + hauteurLigne / 2, lc - 30, hauteurLigne - 44]);
+  }
+  return out;
+}
+/* chemins entre salles voisines : d'un bord à l'autre (même rangée) ou du bas vers le haut (rangée suivante) */
+function cheminsCarte(pos) {
+  const out = [];
+  for (let i = 0; i + 1 < pos.length; i++) {
+    const [x0, y0, w0, h0] = pos[i], [x1, y1, w1, h1] = pos[i + 1];
+    if (Math.abs(y0 - y1) < 1) {
+      const sg = x1 > x0 ? 1 : -1, xa = x0 + sg * (w0 / 2 - 2), xb = x1 - sg * (w1 / 2 - 2);
+      out.push([xa, y0, (xa + xb) / 2, y0 + 16, xb, y1]);
+    } else {
+      const ya = y0 + h0 / 2 - 2, yb = y1 - h1 / 2 + 2;
+      out.push([x0, ya, x0 + (x0 < 300 ? -24 : 24), (ya + yb) / 2, x1, yb]);
+    }
+  }
+  return out;
+}
+function carteHoraires(app, apres) {
+  const hs = listeHoraires(app.donnees), tel = document.body.classList.contains("tel");
+  const cols = Math.max(1, Math.min(hs.length, tel ? 2 : 3)), LW = 600, LH = tel ? 230 : 172;
+  const pos = dispositionCarte(hs.length, cols, LW, LH), H = Math.ceil(hs.length / cols) * LH;
+  let svg = `<svg class="ch-fond" viewBox="0 0 ${LW} ${H}" preserveAspectRatio="none" aria-hidden="true">`;
+  for (const [xa, ya, qx, qy, xb, yb] of cheminsCarte(pos)) {           // chemins en pointillés d'une salle à la suivante
+    svg += `<path d="M${xa} ${ya} Q${qx} ${qy} ${xb} ${yb}" fill="none" stroke="rgba(232,226,208,.34)" stroke-width="2" stroke-dasharray="2 7" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`;
+  }
+  hs.forEach((h, i) => {
+    const [cx, cy, w, hh] = pos[i], actif = h.id === HID;
+    const d = "M" + contourSalle(cx, cy, w, hh, graineTexte(h.id)).map(p => p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" L") + " Z";
+    if (actif) svg += `<path d="${d}" fill="none" stroke="rgba(201,168,92,.16)" stroke-width="7" vector-effect="non-scaling-stroke"/>`;
+    svg += `<path d="${d}" fill="${actif ? "rgba(201,168,92,.08)" : "rgba(232,226,208,.035)"}" stroke="${actif ? "#c9a85c" : "rgba(232,226,208,.5)"}" stroke-width="${actif ? 2 : 1.4}" vector-effect="non-scaling-stroke"/>`;
+  });
+  svg += "</svg>";
+  const z = el("div.carte-hk", {style: {aspectRatio: `${LW} / ${H}`}, html: svg});
+  hs.forEach((h, i) => {
+    const [cx, cy, w, hh] = pos[i], actif = h.id === HID;
+    const mod = boutonIcone("crayon", "", () => { if (apres) apres(); new HoraireEditeur(app, h).montrer(); }, "tab");
+    mod.classList.add("petit", "ch-mod");
+    const b = el("div.ch-salle", {role: "button", tabindex: "0", title: actif ? `${h.nom} (horaire affiché)` : `Aller à ${h.nom}`,
+      style: {left: (cx - w / 2) / LW * 100 + "%", top: (cy - hh / 2) / H * 100 + "%", width: w / LW * 100 + "%", height: hh / H * 100 + "%"},
+      onclick: (e) => { if (mod.contains(e.target)) return; if (apres) apres(); app.choisirHoraire(h.id); }},
+      actif ? el("span.ch-ici", null, icone("hk_banc", 12), "VOUS ÊTES ICI") : null,
+      el("b", {texte: h.nom}), el("span.petit", {texte: plageHoraire(h)}), el("span.petit", {texte: `${h.nb} semaines`}), mod);
+    z.append(b);
+  });
+  return el("div", null, z, el("div.ch-legende", {texte: "CARTE DES HORAIRES · TOUCHE UNE SALLE POUR T'Y RENDRE"}));
 }
 
 /* ---------- barre de navigation */
@@ -160,6 +248,7 @@ class PageAccueil {
         el("h1.acc-salut", {texte: cfg.salut ? salutation() + (prenom ? `, ${prenom}` : "") : h.nom}),
         el("div.muted", {texte: sous})),
       el("div.acc-droite", null, this.lblH, res ? el("div.mono", {texte: res, style: {color: couleurApp("horloge")}}) : null,
+        themeHK() ? el("div", null, geoPastille(app)) : null,
         petit("Personnaliser", () => new PersonnaliserMenu(app).montrer(), "tab"))));
     let paire = null;
     for (const s of cfg.sections) {
@@ -355,6 +444,7 @@ class PageResultats {
       stats.append(el("div.carte.res-stat", null, el("div.etiquette", {texte: t.toUpperCase()}), el("div.res-grand", {texte: v, style: {color: col}}), el("div.petit.muted", {texte: s})));
     }
     z.append(stats);
+    if (themeHK()) stats.firstChild.append(jaugeMasques(moy !== null ? moy / this.objectif() : 0, 22, `Moyenne par rapport à l'objectif de ${this.objectif()} %`));
     const grille = el("div.res-grille");
     if (!COURS_KEYS.length) z.append(el("div.muted", {texte: "Aucune matière marquée « cours ». Ajoute tes cours dans Horaire → Matières."}));
     for (const [k, b] of bilans) grille.append(this.cours(k, b));
@@ -363,9 +453,10 @@ class PageResultats {
   cours(k, b) {
     const col = couleur(k), obj = this.objectif();
     const c = el("section.carte.res-cours", {style: {"--c": col}});
-    const visuel = iconesJeu() ? el("img.ico-pixel", {src: spriteURL(iconeCat(k), 3), style: {width: "24px", height: "24px"}}) : pastille(col, 12);
+    const visuel = iconesJeu() ? visuelCat(k, 24) : pastille(col, 12);
     c.append(el("div.rc-haut", null, visuel, el("div.rc-noms", null, el("h2", {texte: CATS[k][1]}), el("div.petit.muted", {texte: CATS[k][0]})),
       el("div.rc-moy", {texte: b.moyenne !== null ? fmtPct(b.moyenne) : "—", style: {color: b.moyenne !== null ? col : "var(--muted)"}})));
+    if (themeHK()) { const m = jaugeMasques(b.moyenne !== null ? b.moyenne / obj : 0, 16); m.classList.add("rc-masques"); c.append(m); }
     if (!b.evals.length) { c.append(el("div.petit.muted", {texte: "Aucune évaluation pondérée. Ajoute-les dans Horaire → Échéances (avec la pondération)."})); return c; }
     const base = Math.max(b.total, 100), perdu = b.corrige - b.acquis, reste = b.total - b.corrige;
     c.append(el("div.jauge", null, el("span.j-acq", {style: {width: b.acquis / base * 100 + "%"}}), el("span.j-perdu", {style: {left: b.acquis / base * 100 + "%", width: perdu / base * 100 + "%"}}),
@@ -406,7 +497,8 @@ class PageResultats {
 class ChoixHoraire extends Modal {
   constructor(app) {
     super("Mes horaires", "Choisis l'horaire à afficher. Chaque horaire garde ses cours, semaines et échéances.");
-    for (const h of listeHoraires(app.donnees)) this.carte.append(ligneHoraire(app, h, () => this.fermer()));
+    if (themeHK()) this.carte.append(carteHoraires(app, () => this.fermer()));
+    else for (const h of listeHoraires(app.donnees)) this.carte.append(ligneHoraire(app, h, () => this.fermer()));
     this.barre([boutonIcone("plus", "Nouvel horaire", () => { this.fermer(); new HoraireEditeur(app, null).montrer(); }, "primary")], [bouton("Fermer", () => this.fermer())]);
   }
 }

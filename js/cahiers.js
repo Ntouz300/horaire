@@ -627,7 +627,7 @@ class PageNotes {
     c.append(el("div.etiquette", {texte: "MATIÈRES"}));
     for (const [k, v] of Object.entries(CATS)) {
       const nb = notes.filter(n => n.cours === k).length;
-      if (v[2] || nb) item("m:" + k, v[1], nb, iconesJeu() ? el("img.ico-pixel", {src: spriteURL(iconeCat(k), 2), style: {width: "16px", height: "16px"}}) : pastille(couleur(k), 10));
+      if (v[2] || nb) item("m:" + k, v[1], nb, iconesJeu() ? visuelCat(k, 16) : pastille(couleur(k), 10));
     }
   }
   filtrees() {

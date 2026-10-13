@@ -490,15 +490,16 @@ class Reglages extends Modal {
     this.cases = {};
     dr.append(etiquette("Matières et catégories"), this.sws = el("div.sws"), petit("Gérer les matières…", () => new Matieres(app).montrer()),
       etiquette("Grille horaire"), el("div.ligne-heures", null, "De", this.hd, "à", this.hf), etiquette("Options"));
-    for (const [cle, t] of [["horloge", "Afficher l'horloge en haut"], ["secondes", "Afficher les secondes"], ["son", "Son pour les alarmes et minuteries"], ["notes_blocs", "Afficher les notes dans les blocs"], ["icones_theme", "Icônes pixel des thèmes de jeu (Minecraft, Hollow Knight, Rocket League)"]]) {
-      this.cases[cle] = caseACocher(this.d[cle] !== false, null, t);
+    for (const [cle, t] of [["horloge", "Afficher l'horloge en haut"], ["secondes", "Afficher les secondes"], ["son", "Son pour les alarmes et minuteries"], ["notes_blocs", "Afficher les notes dans les blocs"], ["icones_theme", "Icônes des thèmes de jeu (Minecraft, Hollow Knight, Rocket League) — cet appareil"],
+      ["reduire_effets", "Réduire les effets du décor (animation, parallaxe) — cet appareil"]]) {
+      this.cases[cle] = caseACocher(cle === "reduire_effets" ? this.d[cle] === true : this.d[cle] !== false, null, t);
       dr.append(this.cases[cle]);
     }
     this.vPrenom = entree(this.d.prenom || "", {placeholder: "Ton prénom", maxlength: "30"});
     dr.append(etiquette("Ton prénom (page d'accueil)"), this.vPrenom);
     dr.append(etiquette("Synchronisation avec le PC"), el("div.rapides", null, app.lblSync ? el("span.mono.petit", {texte: app.lblSync.textContent, style: {color: app.lblSync.style.color}}) : null,
       petit("Détails…", () => app.ouvrirSynchro())));
-    this.barre([bouton("Tout réinitialiser", () => { this.d = clone(DEFAUT_REGLAGES); this.hd.value = "7"; this.hf.value = "22"; for (const [k, c] of Object.entries(this.cases)) { c.classList.toggle("on", DEFAUT_REGLAGES[k] !== false); } this.maj(); }, "danger")],
+    this.barre([bouton("Tout réinitialiser", () => { this.d = clone(DEFAUT_REGLAGES); this.hd.value = "7"; this.hf.value = "22"; for (const [k, c] of Object.entries(this.cases)) { c.classList.toggle("on", k === "reduire_effets" ? DEFAUT_REGLAGES[k] === true : DEFAUT_REGLAGES[k] !== false); } this.maj(); }, "danger")],
       [bouton("Annuler", () => this.fermer()), bouton("Appliquer", () => this.valider(), "primary")]);
     this.maj();
   }

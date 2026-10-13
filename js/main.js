@@ -185,6 +185,7 @@ class App {
   aller(page) {
     if (!this.ecrans || !this.ecrans[page]) page = "accueil";
     if (page !== "notes" && this.page === "notes" && this.ecrans) this.ecrans.notes.enregistrer();
+    const change = this.page !== page;
     this.page = page;
     for (const [k, e] of Object.entries(this.ecrans)) e.el.hidden = k !== page;
     document.body.dataset.page = page;
@@ -192,6 +193,7 @@ class App {
     this.rail.maj();
     if (page === "horaire") this.dessinerTout();
     else this.ecrans[page].rafraichir();
+    if (change && typeof Decor !== "undefined") Decor.transition(this.ecrans[page].el);
   }
   choisirHoraire(id) {
     const h = metaHoraire(this.donnees, id);

@@ -1067,3 +1067,128 @@ body.tel .carte-modale.horloge .onglets .btn { padding: 8px 11px; }
 body.tel .barre-actions .g, body.tel .barre-actions .d { flex-wrap: wrap; }
 body.tel .barre-actions .btn { min-width: 0; }
 body.tel .res-grand { font-size: calc(21px * var(--txt)); }
+
+/* ================= thème Hollow Knight : décor de caverne (formes originales, aucune image du jeu) ================= */
+#decor { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; --px: 0; --py: 0; contain: strict; }
+#decor[hidden] { display: none; }
+:root.decor-hollow #app { position: relative; z-index: 1; }
+:root.decor-hollow body { background: var(--bg); }
+.dc-couche { position: absolute; inset: -30px; will-change: transform; }
+.dc-fond { transform: translate3d(calc(var(--px) * -10px), calc(var(--py) * -6px), 0); }
+.dc-milieu { transform: translate3d(calc(var(--px) * -22px), calc(var(--py) * -12px), 0); }
+.dc-devant { transform: translate3d(calc(var(--px) * -38px), calc(var(--py) * -16px), 0); }
+.dc-ciel { position: absolute; inset: 0;
+  background: radial-gradient(ellipse 60% 55% at 50% -6%, rgba(78, 122, 128, .5), transparent 70%),
+    radial-gradient(ellipse 45% 35% at 50% 100%, rgba(52, 74, 92, .35), transparent 75%),
+    linear-gradient(180deg, #161a22 0%, #0f1218 45%, #0b0d12 100%); }
+.dc-img { position: absolute; display: block; user-select: none; -webkit-user-drag: none; }
+.dc-rayons { left: 50%; top: 0; width: min(1300px, 110vw); transform: translateX(-50%); opacity: .95; mix-blend-mode: screen; }
+.dc-loin { position: absolute; left: 0; right: 0; bottom: 0; height: min(46vh, 520px); opacity: .9;
+  background: url("decor/hk_lointain.webp?v=1") center bottom / auto 100% repeat-x; }
+.dc-racines { top: 0; width: min(54vw, 60vh, 760px); }
+.dc-racines.g { left: 0; }
+.dc-racines.d { right: 0; transform: scaleX(-1); }
+.dc-cristaux { bottom: 0; width: min(40vw, 48vh, 600px); }
+.dc-cristaux.g { left: 0; }
+.dc-cristaux.d { right: 0; transform: scaleX(-1); width: min(34vw, 40vh, 500px); }
+.dc-brume { position: absolute; left: 0; right: 0; bottom: 0; height: min(30vh, 300px);
+  background: url("decor/hk_brume.webp?v=1") 0 100% / auto 100% repeat-x; animation: dcBrume 140s linear infinite; }
+.dc-brume.b2 { height: min(20vh, 200px); opacity: .7; animation-duration: 90s; animation-direction: reverse; bottom: -2vh; }
+@keyframes dcBrume { from { background-position-x: 0; } to { background-position-x: -1600px; } }
+.dc-particules { position: absolute; left: 0; top: 0; }
+.dc-vignette { position: absolute; inset: 0; background: radial-gradient(ellipse 75% 70% at 50% 45%, transparent 55%, rgba(0, 0, 0, .55) 100%); }
+.dc-voile { position: absolute; inset: 0 -60%; opacity: 0;
+  background: url("decor/hk_brume.webp?v=1") 0 50% / auto 70% repeat-x; transform: translateX(-30%); }
+.dc-voile.passe { animation: dcVoile 1.25s ease-out; }
+@keyframes dcVoile { 0% { opacity: 0; transform: translateX(-30%); } 30% { opacity: .85; } 100% { opacity: 0; transform: translateX(25%); } }
+.ecran.dc-entree { animation: dcEntree .6s ease-out both; }
+@keyframes dcEntree { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+:root.effets-reduits .dc-brume, :root.effets-reduits .dc-voile { animation: none; }
+:root.effets-reduits .dc-particules { display: none; }
+@media (prefers-reduced-motion: reduce) { .dc-brume, .dc-voile.passe, .ecran.dc-entree { animation: none !important; } }
+
+/* iPhone : décor allégé (pièces plus petites, une seule couche de brume) */
+body.tel .dc-racines { width: min(62vw, 300px); }
+body.tel .dc-cristaux { width: min(44vw, 210px); }
+body.tel .dc-cristaux.d { width: min(36vw, 170px); }
+body.tel .dc-loin { height: 30vh; opacity: .75; }
+body.tel .dc-brume.b2 { display: none; }
+body.tel .dc-rayons { width: 150vw; }
+
+/* surfaces : légèrement translucides pour laisser deviner la caverne */
+:root.decor-hollow .carte, :root.decor-hollow .carte-modale { background: color-mix(in srgb, var(--surface) 85%, transparent); }
+:root.decor-hollow .carte { box-shadow: 0 10px 30px rgba(0, 0, 0, .25), inset 0 1px 0 rgba(232, 226, 208, .03); }
+:root.decor-hollow .carte-modale { border-color: color-mix(in srgb, var(--accent) 22%, var(--line2));
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .55), 0 0 0 1px rgba(0, 0, 0, .4), inset 0 1px 0 rgba(232, 226, 208, .05); }
+:root.decor-hollow .voile { background: rgba(4, 6, 9, .62); }
+
+/* titres gravés */
+:root.decor-hollow .page-h1, :root.decor-hollow .acc-salut, :root.decor-hollow .titre-zone h1 { letter-spacing: .035em;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, .6), 0 0 22px rgba(159, 216, 208, .12); }
+:root.decor-hollow .etiquette { letter-spacing: .1em; }
+
+/* barre de navigation : pierre sombre, racines en haut, cristaux en bas, lueur sur l'élément actif */
+:root.decor-hollow .rail { background: linear-gradient(180deg, rgba(10, 12, 17, .92), rgba(14, 18, 25, .86) 40%, rgba(10, 12, 17, .94)),
+    url("decor/hk_racines.webp?v=1") left top / 260% auto no-repeat, url("decor/hk_cristaux.webp?v=1") left bottom / 220% auto no-repeat, var(--surface);
+  background-blend-mode: normal; border-right-color: rgba(159, 216, 208, .14);
+  box-shadow: inset -1px 0 0 rgba(0, 0, 0, .5), 1px 0 18px rgba(159, 216, 208, .05); }
+:root.decor-hollow .rail-item.actif { background: transparent; color: var(--ink); }
+:root.decor-hollow .rail-item.actif::after { content: ""; position: absolute; left: 50%; top: 42%; width: 64px; height: 64px; transform: translate(-50%, -50%);
+  background: url("decor/hk_lueur.webp?v=1") center / contain no-repeat; pointer-events: none; z-index: -1; animation: dcPouls 4s ease-in-out infinite; }
+:root.decor-hollow .rail-item { isolation: isolate; }
+:root.decor-hollow .rail-item.actif .rail-ico { color: var(--ink); filter: drop-shadow(0 0 6px rgba(159, 216, 208, .7)); }
+:root.decor-hollow .rail-item.actif::before { background: var(--accent); }
+:root.decor-hollow .rail-item.actif .rail-lbl { color: var(--accent); }
+:root.decor-hollow .rail-item:hover { background: rgba(232, 226, 208, .05); }
+@keyframes dcPouls { 0%, 100% { opacity: .75; } 50% { opacity: 1; } }
+:root.effets-reduits .rail-item.actif::after { animation: none; }
+:root.decor-hollow .logo-carre { background: radial-gradient(circle at 50% 35%, #e9dcb6, var(--accent) 70%); box-shadow: 0 0 18px rgba(201, 168, 92, .35); }
+:root.decor-hollow body.tel .rail { background: linear-gradient(0deg, rgba(8, 10, 14, .96), rgba(14, 18, 25, .9)); border-top-color: rgba(159, 216, 208, .16);
+  box-shadow: 0 -10px 24px rgba(0, 0, 0, .35); }
+:root.decor-hollow body.tel .rail-item.actif::after { width: 48px; height: 48px; top: 40%; }
+
+/* icônes au trait (Hollow Knight) */
+.ico-hk svg { overflow: visible; }
+:root.decor-hollow .badge { background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--c) 22%, transparent), color-mix(in srgb, var(--c) 8%, var(--surface)) 70%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 28%, transparent); }
+.b-sticker-trait { width: 18px; height: 18px; display: block; image-rendering: auto; opacity: .75; }
+.b-sticker-trait svg { width: 18px; height: 18px; }
+.ico-theme { flex: none; }
+
+/* en-tête de l'accueil : vitrail de caverne */
+:root.decor-hollow .acc-entete.fond-degrade, :root.decor-hollow .acc-entete.fond-motif {
+  background: radial-gradient(ellipse 70% 120% at 20% 0%, rgba(159, 216, 208, .16), transparent 60%),
+    linear-gradient(180deg, rgba(18, 22, 30, .78), rgba(12, 15, 21, .86));
+  border-color: rgba(159, 216, 208, .16); box-shadow: inset 0 1px 0 rgba(232, 226, 208, .05), 0 18px 40px rgba(0, 0, 0, .35); }
+
+/* points de repos (favoris) : un banc avec une petite lueur */
+:root.decor-hollow .nt-epi, :root.decor-hollow .fav-on { color: var(--accent); filter: drop-shadow(0 0 5px rgba(201, 168, 92, .6)); }
+
+/* geo : pièce de pierre dans l'en-tête de l'accueil */
+.geo { display: inline-flex; align-items: center; gap: 7px; margin-top: 6px; padding: 4px 11px 4px 7px; border-radius: 999px;
+  background: rgba(232, 226, 208, .06); border: 1px solid rgba(232, 226, 208, .12); color: var(--ink); cursor: default; }
+.geo b { font: 700 calc(15px * var(--txt)) var(--f-mono); font-variant-numeric: tabular-nums; }
+.geo span { font-size: calc(11.5px * var(--txt)); color: var(--muted); }
+.geo .ico { color: #d9d2bd; }
+
+/* jauge de masques */
+.masques { display: inline-flex; gap: 4px; align-items: center; margin-top: 8px; }
+.masques svg { display: block; }
+.masques .plein path { fill: var(--ink); stroke: var(--ink); filter: drop-shadow(0 0 4px rgba(232, 226, 208, .35)); }
+.masques .plein circle { fill: var(--surface); }
+.masques .vide path { fill: none; stroke: var(--muted); opacity: .7; }
+.rc-masques { margin: 4px 0 2px; }
+
+/* carte des horaires (caverne en tuiles) */
+.carte-hk { position: relative; margin: 6px 0 4px; border-radius: calc(16px * var(--rad)); overflow: hidden;
+  background: radial-gradient(ellipse 80% 70% at 50% 30%, rgba(159, 216, 208, .07), transparent 70%), #0d1016;
+  border: 1px solid rgba(232, 226, 208, .1); box-shadow: inset 0 0 40px rgba(0, 0, 0, .6); }
+.carte-hk svg.ch-fond { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ch-salle { position: absolute; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 12px 16px; cursor: pointer;
+  color: var(--ink); text-align: left; background: none; border: 0; font: inherit; }
+.ch-salle b { font: 700 calc(16px * var(--txt)) / 1.15 var(--f-cond); letter-spacing: .03em; }
+.ch-salle .petit { color: var(--muted); }
+.ch-salle .ch-ici { position: absolute; top: -9px; right: 8px; display: inline-flex; align-items: center; gap: 4px; font: 600 10.5px var(--f-mono);
+  color: var(--accent); background: #0d1016; padding: 2px 7px; border-radius: 999px; border: 1px solid rgba(201, 168, 92, .45); letter-spacing: .06em; }
+.ch-salle .ch-mod { position: absolute; right: 6px; bottom: 6px; }
+.ch-legende { font: 11px var(--f-mono); color: var(--muted); letter-spacing: .08em; margin: 8px 2px 0; }

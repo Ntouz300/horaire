@@ -150,8 +150,10 @@ Object.assign(App.prototype, {
       const lim = this.vue !== "jour" ? 90 : 600;
       lignes += `<div class="b-note">${esc(note.slice(0, lim) + (note.length > lim ? "…" : ""))}</div>`;
     }
-    const sticker = iconesJeu() && y1 - y0 >= 48 && x1 - x0 >= 90
-      ? `<img class="b-sticker" alt="" src="${spriteURL(iconeCat(b.cat || "perso"), 2)}">` : "";
+    const jeu = iconesJeu();
+    const sticker = !jeu || y1 - y0 < 48 || x1 - x0 < 90 ? ""
+      : jeu.ligne ? `<span class="b-sticker b-sticker-trait" style="color:${col}">${icone(iconeCat(b.cat || "perso"), 18).innerHTML}</span>`
+      : `<img class="b-sticker" alt="" src="${spriteURL(iconeCat(b.cat || "perso"), 2)}">`;
     return `<div class="bloc${cls}" data-id="${esc(b.id)}" style="left:${x0}px;top:${y0}px;width:${x1 - x0}px;height:${y1 - y0}px;background:${fill};border-color:${line};--bg:${bg}">
       ${b.fait ? `<span class="b-fait" style="color:${col}">✓</span>` : ""}${lignes}${sticker}<div class="poignee"></div></div>`;
   },

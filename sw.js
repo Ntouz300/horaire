@@ -1,8 +1,9 @@
 /* Service worker : l'app s'ouvre même sans Internet (les données restent sur l'iPad et se synchronisent au retour). */
-const VERSION = "horaire-v20";
-const FICHIERS = ["./", "index.html", "app.css?v=20", "manifest.webmanifest", "icones/icone-180.png", "icones/icone-192.png", "icones/icone-512.png",
-  "js/base.js?v=20", "js/stickers.js?v=20", "js/icones.js?v=20", "js/ui.js?v=20", "js/sync.js?v=20", "js/main.js?v=20", "js/grille.js?v=20", "js/panneaux.js?v=20", "js/editeurs.js?v=20",
-  "js/horloge.js?v=20", "js/dessin.js?v=20", "js/menu.js?v=20", "js/cahiers.js?v=20", "js/pdfs.js?v=20", "js/exports.js?v=20", "js/objets3d.js?v=20", "js/transferts.js?v=20", "js/vocaux.js?v=20", "js/goodnotes.js?v=20",
+const VERSION = "horaire-v21";
+const FICHIERS = ["./", "index.html", "app.css?v=21", "manifest.webmanifest", "icones/icone-180.png", "icones/icone-192.png", "icones/icone-512.png",
+  "js/base.js?v=21", "js/stickers.js?v=21", "js/icones.js?v=21", "js/ui.js?v=21", "js/decor.js?v=21", "js/sync.js?v=21", "js/main.js?v=21", "js/grille.js?v=21", "js/panneaux.js?v=21", "js/editeurs.js?v=21",
+  "js/horloge.js?v=21", "js/dessin.js?v=21", "js/menu.js?v=21", "js/cahiers.js?v=21", "js/pdfs.js?v=21", "js/exports.js?v=21", "js/objets3d.js?v=21", "js/transferts.js?v=21", "js/vocaux.js?v=21", "js/goodnotes.js?v=21",
+  "decor/hk_racines.webp?v=1", "decor/hk_cristaux.webp?v=1", "decor/hk_lointain.webp?v=1", "decor/hk_rayons.webp?v=1", "decor/hk_brume.webp?v=1", "decor/hk_lueur.webp?v=1",
   "js/vendor/pdf.min.mjs", "js/vendor/pdf.worker.min.mjs"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(FICHIERS)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => {

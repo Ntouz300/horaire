@@ -34,7 +34,7 @@ const THEMES = {
   arcenciel: {nom: "Arc-en-ciel", sombre: false, BG: "#efe6ff", SURFACE: "#ffffff", SURFACE2: "#fdf1ff", SURFACE3: "#ffe3f3", INK: "#2a1050", MUTED: "#7a5ea8", RULE: "#e6d4ff", GRID: "#f1e6ff", TODAY_BG: "#fff2a8", ACCENT: "#ff2d95", DANGER: "#e0102f", TINT: .5, SCROLL: "#d9b8ff", LINE2: "#c9a8f5", cats: _CATS_ARC},
   obsidienne: {nom: "Obsidienne", sombre: true, BG: "#050506", SURFACE: "#0e0e11", SURFACE2: "#16161b", SURFACE3: "#202027", INK: "#f1ede4", MUTED: "#8f8b82", RULE: "#1c1c22", GRID: "#121216", TODAY_BG: "#18160f", ACCENT: "#d6b36a", DANGER: "#ff7a7a", TINT: .8, SCROLL: "#2b2b33", LINE2: "#34343d", cats: _CATS_OBS},
   minecraft: {nom: "Minecraft", sombre: true, mono: true, bloc: true, BG: "#1b140e", SURFACE: "#2a1f15", SURFACE2: "#37291b", SURFACE3: "#4a3824", INK: "#f4ecd8", MUTED: "#b3a283", RULE: "#4a3824", GRID: "#241b12", TODAY_BG: "#26391a", ACCENT: "#5fbf3a", DANGER: "#ff5555", TINT: .72, SCROLL: "#5a4630", LINE2: "#5d472e", cats: _CATS_MC},
-  hollow: {"nom": "Hollow Knight", "sombre": true, "titres": "serif", "BG": "#0b0f17", "SURFACE": "#121826", "SURFACE2": "#1a2234", "SURFACE3": "#253048", "INK": "#e9ecf2", "MUTED": "#8b95ab", "RULE": "#212a3d", "GRID": "#161d2c", "TODAY_BG": "#16203a", "ACCENT": "#9fd8ff", "DANGER": "#ff8a3d", "TINT": 0.8, "SCROLL": "#2a3550", "LINE2": "#33405c", "cats": {"info": "#7fd4ff", "graph": "#a8b8ff", "meca": "#ffb46b", "ethique": "#ff8fa3", "travail": "#c3a6ff", "etude": "#9aa7bd", "perso": "#8fe3c0"}},
+  hollow: {"nom": "Hollow Knight", "sombre": true, "titres": "serif", "decor": "hollow", "BG": "#0b0d12", "SURFACE": "#12161e", "SURFACE2": "#1a1f29", "SURFACE3": "#252b37", "INK": "#e8e2d0", "MUTED": "#979eab", "RULE": "#232a36", "GRID": "#161b23", "TODAY_BG": "#16212a", "ACCENT": "#c9a85c", "LUEUR": "#9fd8d0", "DANGER": "#e8875a", "TINT": 0.8, "SCROLL": "#2a3240", "LINE2": "#323a48", "cats": {"info": "#8fc9e8", "graph": "#a9b4e6", "meca": "#d9a066", "ethique": "#d98a9a", "travail": "#b9a3dc", "etude": "#9aa3b2", "perso": "#9fd8b8"}},
   rocket: {"nom": "Rocket League", "sombre": true, "titres": "sport", "BG": "#070d1c", "SURFACE": "#0e1630", "SURFACE2": "#152045", "SURFACE3": "#1e2c5c", "INK": "#eef3ff", "MUTED": "#8fa0c8", "RULE": "#1c2a55", "GRID": "#121c3c", "TODAY_BG": "#16224a", "ACCENT": "#1fa2ff", "DANGER": "#ff5a1f", "TINT": 0.74, "SCROLL": "#25356a", "LINE2": "#2b3d78", "cats": {"info": "#1fa2ff", "graph": "#7c5cff", "meca": "#ff7a1a", "ethique": "#ff3d6e", "travail": "#ffd23f", "etude": "#7f93c4", "perso": "#2ee6a6"}},
   sakura: {"nom": "Sakura", "sombre": false, "BG": "#fbf0f3", "SURFACE": "#ffffff", "SURFACE2": "#fdf3f6", "SURFACE3": "#f7dfe7", "INK": "#3b2530", "MUTED": "#9a7383", "RULE": "#f1d9e2", "GRID": "#f7e8ee", "TODAY_BG": "#fde2ea", "ACCENT": "#e75a8a", "DANGER": "#d6334b", "TINT": 0.72, "SCROLL": "#efc6d4", "LINE2": "#e9c3d1", "cats": {"info": "#2a9d8f", "graph": "#5b7bd5", "meca": "#e07a3f", "ethique": "#d6336c", "travail": "#9b59b6", "etude": "#7d8597", "perso": "#5aa55a"}},
   synthwave: {"nom": "Synthwave", "sombre": true, "titres": "sport", "BG": "#14081f", "SURFACE": "#1d0d2e", "SURFACE2": "#281241", "SURFACE3": "#371a58", "INK": "#fdeaff", "MUTED": "#b08ccc", "RULE": "#33184f", "GRID": "#220f36", "TODAY_BG": "#2e1149", "ACCENT": "#ff7a45", "DANGER": "#ff3b6b", "TINT": 0.74, "SCROLL": "#4a2275", "LINE2": "#4a2a75", "cats": {"info": "#3df2ff", "graph": "#a970ff", "meca": "#ffb84d", "ethique": "#ff4fa3", "travail": "#ff7a45", "etude": "#9a86c7", "perso": "#5cffb0"}},
@@ -45,8 +45,8 @@ const TAILLES = [["Petit", 90], ["Normal", 100], ["Grand", 115], ["Très grand",
 const ACCENTS = ["#5b9bff", "#3cc4c9", "#4fd1a1", "#f0a541", "#ff7a8d", "#a78bfa", "#e879f9", "#f2d35b"];
 const DEFAUT_REGLAGES = {theme: "nuit", accent: "", forme: 2, texte: 100, h_debut: 7, h_fin: 22, notes_blocs: true,
   plein_ecran: true, horloge: true, secondes: true, son: true, rappel_cours: 0,
-  prenom: "Antoine", objectif: 70, icones_theme: true};
-const REG_LOCAUX = ["vue", "plein_ecran", "texte", "horaire", "page", "vue3d", "onglets_notes", "canevas_vues", "canevas_fond", "notes_repliees", "transferts_actif", "transferts_port"];   // réglages propres à l'appareil
+  prenom: "Antoine", objectif: 70, icones_theme: true, reduire_effets: false};
+const REG_LOCAUX = ["vue", "plein_ecran", "texte", "horaire", "page", "vue3d", "onglets_notes", "canevas_vues", "canevas_fond", "notes_repliees", "transferts_actif", "transferts_port", "icones_theme", "reduire_effets"];   // réglages propres à l'appareil
 const CATS_BASE = {
   info: ["Informatique (6GEN248)", "Informatique", true], graph: ["Sciences graphiques (6DDG100)", "Sc. graphiques", true],
   meca: ["Mécanique (6GMC108)", "Mécanique", true], ethique: ["Ingénierie et éthique (6GIN275)", "Éthique", true],
@@ -113,6 +113,8 @@ function appliquerReglages(reg) {
   T.TITRES = t.titres || "";
   for (const k of ["BG", "SURFACE", "SURFACE2", "SURFACE3", "INK", "MUTED", "RULE", "GRID", "TODAY_BG", "DANGER", "TINT", "SCROLL", "LINE2"]) T[k] = t[k];
   T.SOMBRE = t.sombre;
+  T.LUEUR = t.LUEUR || t.ACCENT;
+  T.DECOR = t.decor || "";
   T.CRITIQUE = t.sombre ? "#ff6fd8" : "#c0268f";
   const acc = reg.accent || t.ACCENT;
   T.ACCENT = acc; T.ACCENT_HOVER = mix(acc, .22); T.ACCENT_INK = encreSur(acc);
@@ -129,7 +131,7 @@ function appliquerReglages(reg) {
   const v = {"--bg": T.BG, "--surface": T.SURFACE, "--surface2": T.SURFACE2, "--surface3": T.SURFACE3, "--ink": T.INK,
     "--muted": T.MUTED, "--rule": T.RULE, "--grid": T.GRID, "--today": T.TODAY_BG, "--accent": T.ACCENT,
     "--accent-hover": T.ACCENT_HOVER, "--accent-ink": T.ACCENT_INK, "--danger": T.DANGER, "--line2": T.LINE2,
-    "--scroll": T.SCROLL, "--critique": T.CRITIQUE, "--rad": String(T.RAD), "--txt": String(T.TXT)};
+    "--scroll": T.SCROLL, "--critique": T.CRITIQUE, "--lueur": T.LUEUR, "--rad": String(T.RAD), "--txt": String(T.TXT)};
   for (const [k, x] of Object.entries(v)) st.setProperty(k, x);
   document.documentElement.classList.toggle("mono", T.MONO);
   document.documentElement.classList.toggle("titres-serif", T.TITRES === "serif");
@@ -137,6 +139,7 @@ function appliquerReglages(reg) {
   document.documentElement.classList.toggle("clair", !T.SOMBRE);
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute("content", T.BG);
+  if (typeof Decor !== "undefined") Decor.appliquer(reg);
 }
 
 /* ---------- dates et heures */
