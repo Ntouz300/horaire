@@ -97,6 +97,7 @@ class App {
     this.construire();
     this.dessinerTout();
     this.enregistrerLocal();
+    this.verifierGeo(false);
   }
 
   /* ---------- enregistrement */
@@ -109,7 +110,15 @@ class App {
     Stock.ecrire("horaire_reglages_locaux", loc);
     return ok;
   }
+  /* geo (thème Hollow Knight) : une échéance de plus terminée dans l'horaire actif → petite célébration */
+  verifierGeo(celebrer) {
+    if (!this.donnees) return;
+    const g = geoHoraire(this.ses), ref = this._geoRef;
+    this._geoRef = [HID, g];
+    if (celebrer && ref && ref[0] === HID && g > ref[1]) celebrerGeo(g - ref[1], g);
+  }
   sauver() {
+    this.verifierGeo(true);
     const ok = this.enregistrerLocal();
     this.statut(ok ? `Enregistré à ${new Date().toTimeString().slice(0, 5)}` : "Mémoire de l'iPad pleine");
     this.sync.localChange();
@@ -130,6 +139,7 @@ class App {
     }
     this.enregistrerLocal();
     menageVocaux(this, noms);
+    this.verifierGeo(false);
     this.statut(`Mis à jour depuis le PC à ${new Date().toTimeString().slice(0, 5)}`);
     let actif = this.donnees.reglages.horaire || "aut26";
     if (!listeHoraires(this.donnees).some(h => h.id === actif)) actif = this.donnees.reglages.horaire = "aut26";
@@ -205,6 +215,7 @@ class App {
     this.sauver();
     this.page = "horaire";
     this.construire();
+    titreZone(h.nom, plageHoraire(h));
   }
 
   construireHoraire(zone) {

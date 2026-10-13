@@ -153,6 +153,102 @@ function carteHoraires(app, apres) {
   return el("div", null, z, el("div.ch-legende", {texte: "CARTE DES HORAIRES · TOUCHE UNE SALLE POUR T'Y RENDRE"}));
 }
 
+/* ornement (trait, losange, volutes) : séparateur du journal et des titres de zone */
+const ORNEMENT_HK = `<svg viewBox="0 0 240 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round">
+<path d="M8 12 H96 M144 12 H232"/><path d="M96 12 C102 12 104 6 109 6"/><path d="M144 12 C138 12 136 18 131 18"/>
+<path d="M112 12 L120 4 L128 12 L120 20 Z"/><circle cx="6" cy="12" r="1.6"/><circle cx="234" cy="12" r="1.6"/></g>
+<circle cx="120" cy="12" r="2.2" fill="currentColor"/></svg>`;
+function ornementHK(classe = "") { return el("div.ornement-hk" + classe, {html: ORNEMENT_HK}); }
+
+/* gain de geo : une échéance vient d'être terminée (ou un résultat ajouté) */
+function celebrerGeo(n, total) {
+  if (!themeHK() || !(n > 0)) return;
+  const cible = document.querySelector(".ecran:not([hidden]) .geo");
+  let pos = null;
+  if (cible) {
+    const nb = cible.querySelector("b"); if (nb && total != null) nb.textContent = String(total);
+    cible.classList.remove("gain"); void cible.offsetWidth; cible.classList.add("gain");
+    const r = cible.getBoundingClientRect();
+    if (r.width && r.bottom > 0 && r.top < innerHeight) pos = r;
+  }
+  document.querySelectorAll(".geo-gain").forEach(x => x.remove());
+  const eclats = [0, 1, 2, 3, 4, 5].map(i => el("i.eclat", {style: {"--a": (i * 60 + 15) + "deg"}}));
+  const b = el("div.geo-gain" + (Decor.reduit ? ".calme" : ""), {"aria-hidden": "true"}, ...eclats, icone("hk_geo", 18), el("b", {texte: "+" + n}), el("span", {texte: "geo"}));
+  document.body.append(b);
+  if (pos) {                                         // à gauche du compteur de geo de l'en-tête
+    const bw = b.offsetWidth, bh = b.offsetHeight;
+    Object.assign(b.style, {right: "auto", left: Math.max(8, pos.left - bw - 10) + "px", top: (pos.top + (pos.height - bh) / 2) + "px"});
+  }
+  setTimeout(() => b.remove(), 2000);
+}
+
+/* titre de zone : en changeant d'horaire, son nom s'affiche au centre comme l'arrivée dans une nouvelle région */
+function titreZone(nom, sous) {
+  if (!themeHK()) return;
+  document.querySelectorAll(".zone-hk").forEach(x => x.remove());
+  const z = el("div.zone-hk" + (Decor.reduit ? ".calme" : ""), {"aria-hidden": "true"},
+    el("div.tz-sous", {texte: sous || ""}), el("div.tz-nom", {texte: nom}), ornementHK(".tz-orn"));
+  document.body.append(z);
+  setTimeout(() => z.remove(), 3600);
+}
+
+/* bestiaire des matières : une fiche par cours (moyenne, masques, échéances restantes) */
+function loreMatiere(b, nb, obj) {
+  if (b.moyenne === null) return "Entrée encore illisible. Obtiens un premier résultat pour déchiffrer cette matière.";
+  if (nb >= 5) return "Matière domptée. Ses secrets n'ont plus de prise sur toi.";
+  if (nb >= 3) return "Créature coriace, mais elle cède du terrain. Garde le rythme.";
+  if (nb >= 1) return `Elle résiste. Prépare-toi avant la prochaine rencontre pour viser ${obj} %.`;
+  return "Prudence : cette matière a l'avantage pour l'instant.";
+}
+function ficheMatiere(ses, k, obj) {
+  const b = bilanCours(ses, k), nb = nbMasques(b.moyenne !== null ? b.moyenne / obj : 0);
+  const toutes = ses.echeances.filter(e => e.cours === k);
+  const restent = toutes.filter(e => !e.fait);
+  const auj = iso(aujourdhui());
+  const proch = restent.filter(e => (e.date || "") >= auj).sort((a, c) => (a.date || "").localeCompare(c.date || ""))[0];
+  return {k, b, nb, toutes, restent, proch, lore: loreMatiere(b, nb, obj)};
+}
+class Bestiaire extends Modal {
+  constructor(app, obj, ses) {
+    super("Bestiaire des matières", null, {classe: "large"});
+    this.app = app; this.obj = obj;
+    this.fiches = COURS_KEYS.map(k => ficheMatiere(ses || app.ses, k, obj));
+    const vus = this.fiches.filter(f => f.b.moyenne !== null).length;
+    this.carte.classList.add("bestiaire");
+    this.carte.append(el("div.mono.muted.bst-compte", {texte: `ENTRÉES DÉCHIFFRÉES : ${vus} / ${this.fiches.length}`}));
+    this.liste = el("div.bst-liste"); this.fiche = el("div.bst-fiche");
+    this.carte.append(el("div.bst-corps", null, this.liste, this.fiche));
+    if (!this.fiches.length) this.fiche.append(el("div.muted", {texte: "Aucune matière marquée « cours ». Ajoute tes cours dans Horaire → Matières."}));
+    this.fiches.forEach((f, i) => {
+      const b = el("button.bst-item", {type: "button", onclick: () => this.montrerFiche(i)}, visuelCat(f.k, 22),
+        el("span.bst-nom", {texte: CATS[f.k][1]}), jaugeMasques(f.b.moyenne !== null ? f.b.moyenne / obj : 0, 11));
+      this.liste.append(b);
+    });
+    this.barre([], [bouton("Fermer", () => this.fermer())]);
+    if (this.fiches.length) this.montrerFiche(0);
+  }
+  montrerFiche(i) {
+    const f = this.fiches[i], col = couleur(f.k);
+    [...this.liste.children].forEach((b, j) => b.classList.toggle("on", j === i));
+    const d = f.proch ? isoDate(f.proch.date) : null;
+    this.fiche.innerHTML = "";
+    this.fiche.style.setProperty("--c", col);
+    this.fiche.append(...[
+      el("div.bst-portrait", null, visuelCat(f.k, 64)),
+      el("h2.bst-titre", {texte: CATS[f.k][1]}), CATS[f.k][0] && CATS[f.k][0] !== CATS[f.k][1] ? el("div.mono.muted.bst-code", {texte: CATS[f.k][0]}) : null,
+      ornementHK(".bst-orn"),
+      el("p.bst-lore", {texte: f.lore}),
+      jaugeMasques(f.b.moyenne !== null ? f.b.moyenne / this.obj : 0, 20, `Moyenne par rapport à l'objectif de ${this.obj} %`),
+      el("div.bst-stats", null,
+        el("div", null, el("b", {texte: f.b.moyenne !== null ? fmtPct(f.b.moyenne) : "—"}), el("span", {texte: "moyenne"})),
+        el("div", null, el("b", {texte: `${f.toutes.length - f.restent.length} / ${f.toutes.length}`}), el("span", {texte: "échéances vaincues"})),
+        el("div", null, el("b", {texte: f.b.total ? fmtPct(f.b.corrige / f.b.total * 100) : "—"}), el("span", {texte: "matière corrigée"}))),
+      el("div.bst-note", {texte: f.restent.length ? `Termine encore ${f.restent.length} échéance${f.restent.length > 1 ? "s" : ""} pour compléter cette fiche.` : "Fiche complète : toutes les échéances sont terminées."}),
+      f.proch ? el("div.bst-proch", null, el("span.mono.muted", {texte: "PROCHAINE RENCONTRE"}), el("b", {texte: f.proch.quoi || "Échéance"}),
+        el("span.muted", {texte: d ? `${dateCourte(d)} · ${quand(d)}` : ""})) : null].filter(Boolean));
+  }
+}
+
 /* ---------- barre de navigation */
 class Rail {
   constructor(app) {
@@ -431,7 +527,8 @@ class PageResultats {
     const obj = el("div.rapides.res-obj");
     for (const v of [60, 70, 75, 80, 85, 90]) obj.append(petit(`${v} %`, () => { app.reglages.objectif = v; app.sauver(); this.rafraichir(); }, v === this.objectif() ? "primary" : "ghost"));
     z.append(el("header.res-entete", null,
-      el("div", null, el("div.mono.muted", {texte: "BULLETIN"}), el("h1.page-h1", {texte: "Résultats"}), chips),
+      el("div", null, el("div.mono.muted", {texte: "BULLETIN"}), el("h1.page-h1", {texte: "Résultats"}), chips,
+        themeHK() ? boutonIcone("hk_grimoire", "Bestiaire des matières", () => new Bestiaire(app, this.objectif(), donneesHoraire(app.donnees, this.hid)).montrer(), "ghost") : null),
       el("div.res-obj-zone", null, el("div.etiquette", {texte: "OBJECTIF PAR COURS"}), obj)));
     const bilans = COURS_KEYS.map(k => [k, bilanCours(ses, k)]);
     const [moy, n] = moyenneGenerale(ses);

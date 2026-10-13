@@ -45,8 +45,8 @@ const TAILLES = [["Petit", 90], ["Normal", 100], ["Grand", 115], ["Très grand",
 const ACCENTS = ["#5b9bff", "#3cc4c9", "#4fd1a1", "#f0a541", "#ff7a8d", "#a78bfa", "#e879f9", "#f2d35b"];
 const DEFAUT_REGLAGES = {theme: "nuit", accent: "", forme: 2, texte: 100, h_debut: 7, h_fin: 22, notes_blocs: true,
   plein_ecran: true, horloge: true, secondes: true, son: true, rappel_cours: 0,
-  prenom: "Antoine", objectif: 70, icones_theme: true, reduire_effets: false};
-const REG_LOCAUX = ["vue", "plein_ecran", "texte", "horaire", "page", "vue3d", "onglets_notes", "canevas_vues", "canevas_fond", "notes_repliees", "transferts_actif", "transferts_port", "icones_theme", "reduire_effets"];   // réglages propres à l'appareil
+  prenom: "Antoine", objectif: 70, icones_theme: true, reduire_effets: false, son_ambiance: false, volume_ambiance: 60, brume: "normale"};
+const REG_LOCAUX = ["vue", "plein_ecran", "texte", "horaire", "page", "vue3d", "onglets_notes", "canevas_vues", "canevas_fond", "notes_repliees", "transferts_actif", "transferts_port", "icones_theme", "reduire_effets", "son_ambiance", "volume_ambiance", "brume"];   // réglages propres à l'appareil
 const CATS_BASE = {
   info: ["Informatique (6GEN248)", "Informatique", true], graph: ["Sciences graphiques (6DDG100)", "Sc. graphiques", true],
   meca: ["Mécanique (6GMC108)", "Mécanique", true], ethique: ["Ingénierie et éthique (6GIN275)", "Éthique", true],
@@ -139,7 +139,9 @@ function appliquerReglages(reg) {
   document.documentElement.classList.toggle("clair", !T.SOMBRE);
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute("content", T.BG);
+  document.documentElement.dataset.brume = ["aucune", "legere", "normale", "dense"].includes(reg.brume) ? reg.brume : "normale";
   if (typeof Decor !== "undefined") Decor.appliquer(reg);
+  if (typeof Ambiance !== "undefined") Ambiance.appliquer(reg);
 }
 
 /* ---------- dates et heures */

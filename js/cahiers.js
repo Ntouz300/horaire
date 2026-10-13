@@ -979,6 +979,13 @@ class EditeurTexte {
         boutonIcone("reglages", "", () => { this.enregistrer(); new InfosDocument(pn, n).montrer(); }, "ghost"),
         boutonIcone("exporter", "", () => { this.enregistrer(); new ExportNote(n, null).montrer(); }, "ghost")),
       el("section.carte.doc-texte-ed", {style: {background: pc.fond, color: pc.encre}}, this.titre, el("div.nt-sep"), this.texte));
+    // thème Hollow Knight : les notes au papier par défaut prennent l'allure d'un journal ancien
+    if (themeHK() && !PAPIER_COUL[n.papier]) {
+      const sec = this.el.querySelector(".doc-texte-ed"), d = n.maj ? isoDate(String(n.maj).slice(0, 10)) : null;
+      sec.classList.add("journal-hk"); sec.style.background = ""; sec.style.color = "";
+      sec.querySelector(".nt-sep").replaceWith(ornementHK(".jr-orn"));
+      sec.prepend(el("div.mono.jr-tete", {texte: "JOURNAL" + (d ? " · " + dateCourte(d).toUpperCase() : "")}));
+    }
     this.majFav();
   }
   majFav() { const b = this.el.querySelectorAll(".doc-barre .btn")[1]; if (b) b.classList.toggle("fav-on", !!this.n.epingle); }

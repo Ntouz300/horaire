@@ -495,11 +495,16 @@ class Reglages extends Modal {
       this.cases[cle] = caseACocher(cle === "reduire_effets" ? this.d[cle] === true : this.d[cle] !== false, null, t);
       dr.append(this.cases[cle]);
     }
+    // thème Hollow Knight : brume et sons d'ambiance (propres à cet appareil)
+    this.cases.son_ambiance = caseACocher(this.d.son_ambiance === true, null, "Sons d'ambiance de caverne (vent, gouttes d'eau)");
+    g.append(etiquette("Décor Hollow Knight (cet appareil)"), el("div.petit.muted", {texte: "Brume"}),
+      this.pills("brume", [["aucune", "Sans brume"], ["legere", "Légère"], ["normale", "Normale"], ["dense", "Dense"]]),
+      this.cases.son_ambiance, el("div.petit.muted", {texte: "Volume de l'ambiance"}), this.pills("volume_ambiance", [[30, "Doux"], [60, "Moyen"], [90, "Fort"]]));
     this.vPrenom = entree(this.d.prenom || "", {placeholder: "Ton prénom", maxlength: "30"});
     dr.append(etiquette("Ton prénom (page d'accueil)"), this.vPrenom);
     dr.append(etiquette("Synchronisation avec le PC"), el("div.rapides", null, app.lblSync ? el("span.mono.petit", {texte: app.lblSync.textContent, style: {color: app.lblSync.style.color}}) : null,
       petit("Détails…", () => app.ouvrirSynchro())));
-    this.barre([bouton("Tout réinitialiser", () => { this.d = clone(DEFAUT_REGLAGES); this.hd.value = "7"; this.hf.value = "22"; for (const [k, c] of Object.entries(this.cases)) { c.classList.toggle("on", k === "reduire_effets" ? DEFAUT_REGLAGES[k] === true : DEFAUT_REGLAGES[k] !== false); } this.maj(); }, "danger")],
+    this.barre([bouton("Tout réinitialiser", () => { this.d = clone(DEFAUT_REGLAGES); this.hd.value = "7"; this.hf.value = "22"; for (const [k, c] of Object.entries(this.cases)) { c.classList.toggle("on", ["reduire_effets", "son_ambiance"].includes(k) ? DEFAUT_REGLAGES[k] === true : DEFAUT_REGLAGES[k] !== false); } this.maj(); }, "danger")],
       [bouton("Annuler", () => this.fermer()), bouton("Appliquer", () => this.valider(), "primary")]);
     this.maj();
   }
