@@ -4,7 +4,7 @@
 const MOIS_LONG = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 
 /* ---------- personnalisation du menu (réglage synchronisé « menu ») */
-const APPS_MENU = [["accueil", "Accueil"], ["horaire", "Horaire"], ["notes", "Notes"], ["resultats", "Résultats"], ["objets3d", "3D"], ["transferts", "Transferts"], ["youtube", "YouTube"], ["musique", "Musique"], ["horloge", "Horloge"]];
+const APPS_MENU = [["accueil", "Accueil"], ["horaire", "Horaire"], ["notes", "Notes"], ["resultats", "Résultats"], ["objets3d", "3D"], ["transferts", "Transferts"], ["youtube", "YouTube"], ["musique", "Musique"], ["jeux", "Mini-jeux"], ["horloge", "Horloge"]];
 const SECTIONS_ACCUEIL = [["maintenant", "En ce moment"], ["applications", "Applications"], ["examen", "Prochain examen"],
   ["avenir", "À venir"], ["notes", "Notes récentes"], ["horaires", "Mes horaires"]];
 const SECTIONS_LARGES = ["maintenant", "applications"];
@@ -24,7 +24,7 @@ function nomApp(k) { return (APPS_MENU.find(a => a[0] === k) || ["", k])[1]; }
 
 function couleurApp(page) {
   const cats = (THEMES[T.REG_THEME] || THEMES.nuit).cats;
-  return {horaire: T.ACCENT, notes: cats.meca, resultats: cats.perso, horloge: cats.travail, objets3d: cats.graph, transferts: cats.info, youtube: cats.ethique, musique: cats.travail, accueil: T.ACCENT}[page] || T.ACCENT;
+  return {horaire: T.ACCENT, notes: cats.meca, resultats: cats.perso, horloge: cats.travail, objets3d: cats.graph, transferts: cats.info, youtube: cats.ethique, musique: cats.travail, jeux: cats.ethique, accueil: T.ACCENT}[page] || T.ACCENT;
 }
 /* icône d'une page ; en thème Minecraft, le sticker pixel-art correspondant */
 function iconePage(page, taille = 22) {
@@ -70,8 +70,9 @@ function barreProgres(frac, col, classe = "") {
 function themeHK() { return T.DECOR === "hollow"; }
 /* geo : 10 par échéance terminée dans l'horaire actif (calculé, rien de nouveau n'est enregistré) */
 function geoHoraire(ses) { return ((ses && ses.echeances) || []).filter(e => e.fait).length * 10; }
+/* la pièce de l'en-tête porte le solde de géos (monnaie des mini-jeux) ; une échéance terminée rapporte des géos */
 function geoPastille(app) {
-  return el("div.geo", {title: "10 geo par échéance terminée dans cet horaire"}, icone("hk_geo", 18), el("b", {texte: String(geoHoraire(app.ses))}), el("span", {texte: "geo"}));
+  return el("div.geo", {title: "Tes géos : touche pour ouvrir la boutique", role: "button", onclick: () => new Boutique(app).montrer()}, icone("hk_geo", 18), el("b.geos-solde", {texte: fmtGeos(Geos.solde(app.donnees))}), el("span", {texte: "geo"}));
 }
 function masqueSVG(plein, taille) {
   const p = [];
@@ -166,7 +167,7 @@ function celebrerGeo(n, total) {
   const cible = document.querySelector(".ecran:not([hidden]) .geo");
   let pos = null;
   if (cible) {
-    const nb = cible.querySelector("b"); if (nb && total != null) nb.textContent = String(total);
+    const nb = cible.querySelector("b"); if (nb && total != null) nb.textContent = fmtGeos(total);
     cible.classList.remove("gain"); void cible.offsetWidth; cible.classList.add("gain");
     const r = cible.getBoundingClientRect();
     if (r.width && r.bottom > 0 && r.top < innerHeight) pos = r;
@@ -266,7 +267,9 @@ class Rail {
     haut.append(this.btnPlus);
     this.items.reglages = this.item("reglages", "Réglages");
     this.lblSync = el("div.rail-sync", {onclick: () => app.ouvrirSynchro()});
-    this.el = el("nav.rail" + (cfg.compact ? ".compact" : ""), null, this.logo, haut, el("div.espace"), this.lblSync,
+    this.geos = el("button.rail-geos", {type: "button", title: `${fmtGeos(Geos.solde(app.donnees))} géos : touche pour ouvrir la boutique`, onclick: () => new Boutique(app).montrer()},
+      imgSprite("geo", 2), el("b.geos-court", {texte: fmtGeosCourt(Geos.solde(app.donnees))}));
+    this.el = el("nav.rail" + (cfg.compact ? ".compact" : ""), null, this.logo, this.geos, haut, el("div.espace"), this.lblSync,
       el("button.rail-item.rail-perso", {type: "button", title: "Personnaliser le menu", onclick: () => new PersonnaliserMenu(app).montrer()}, el("span.rail-ico", null, icone("grille", 20)), el("span.rail-lbl", {texte: "Menu"})),
       this.items.reglages);
     this.maj();
@@ -457,6 +460,7 @@ class PageAccueil {
       ["transferts", "Transferts", ficheTransferts(app.donnees).enLigne ? "PC joignable" : "PC hors ligne", "Fichiers entre le PC et l'iPad", null],
       ["youtube", "YouTube", "Navigateur", "S'ouvre dans le navigateur", null],
       ["musique", "Musique", "Apple Music", "S'ouvre dans le navigateur", null],
+      ["jeux", "Mini-jeux", fmtGeos(Geos.solde(app.donnees)) + " géos", "Roulette, machine à sous, blackjack…", null],
       ["horloge", "Horloge", res ? res.split("   ·   ")[0] : "Concentration", als.length ? `Prochaine alarme : ${fmt(als[0].heure)}` : "Pomodoro, minuterie, alarmes", null],
     ];
   }

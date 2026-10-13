@@ -975,6 +975,7 @@ class EditeurTexte {
     this.el = el("div.doc-vue", null,
       el("header.doc-barre", null, boutonIcone("retour", "Bibliothèque", () => pn.fermerDoc(), "tab"), el("span.espace"), this.etat,
         boutonIcone("etoile", "", () => { n.epingle = !n.epingle; this.modifie(true); this.majFav(); }, "ghost"),
+        boutonAutocollants(() => this.ajouterAutocollant()),
         boutonVocaux(pn.app, {note: n.id}, `Note : ${n.titre || "Sans titre"}`, () => this.enregistrer()),
         boutonIcone("reglages", "", () => { this.enregistrer(); new InfosDocument(pn, n).montrer(); }, "ghost"),
         boutonIcone("exporter", "", () => { this.enregistrer(); new ExportNote(n, null).montrer(); }, "ghost")),
@@ -986,7 +987,54 @@ class EditeurTexte {
       sec.querySelector(".nt-sep").replaceWith(ornementHK(".jr-orn"));
       sec.prepend(el("div.mono.jr-tete", {texte: "JOURNAL" + (d ? " · " + dateCourte(d).toUpperCase() : "")}));
     }
+    // autocollants : posés sur la feuille (position relative à la feuille, la même sur tous les appareils)
+    this.calque = el("div.ac-calque");
+    const feuille = this.el.querySelector(".doc-texte-ed");
+    feuille.append(this.calque);
+    feuille.addEventListener("pointerdown", () => { if (this.acChoisi) { this.acChoisi = null; this.majAutocollants(); } });
+    this.acZones = new Map();
     this.majFav();
+    requestAnimationFrame(() => this.majAutocollants());
+  }
+  async ajouterAutocollant() {
+    this.enregistrer();
+    const s = await choisirAutocollant(this.pn.app);
+    if (!s) return;
+    if (!Array.isArray(this.n.autocollants)) this.n.autocollants = [];
+    const a = {id: newId(), s, p: "", x: 500 + (alea(161) - 80), y: 420 + (alea(161) - 80), t: AC_TAILLE};
+    this.n.autocollants.push(a);
+    this.acChoisi = a.id;
+    this.majAutocollants(); this.modifie(true); Geos.maj(this.pn.app);
+  }
+  majAutocollants() {
+    const liste = autocollantsNote(this.n), taille = Math.round(AC_TAILLE_TEXTE * T.TXT);
+    for (const [id, z] of this.acZones) if (!liste.some(a => a.id === id)) { z.remove(); this.acZones.delete(id); }
+    for (const a of liste) {
+      let z = this.acZones.get(a.id);
+      if (!z) { z = zoneAutocollant(a, this.rappelsAc()); z.classList.add("ac-texte"); this.calque.append(z); this.acZones.set(a.id, z); }
+      z._ac = a;
+      z.style.cssText = `left:${a.x / 10}%;top:${a.y / 10}%;width:${taille}px;height:${taille}px`;
+      z.classList.toggle("choisi", this.acChoisi === a.id);
+    }
+  }
+  rappelsAc() {
+    return {
+      debut: (g) => { this.acGeste = g; },
+      bouge: (a, g, dx, dy) => {
+        const r = this.calque.getBoundingClientRect();
+        a.x = Math.round(Math.max(0, Math.min(1000, g.x0 + dx / Math.max(1, r.width) * 1000)) * 10) / 10;
+        a.y = Math.round(Math.max(0, Math.min(1000, g.y0 + dy / Math.max(1, r.height) * 1000)) * 10) / 10;
+        this.majAutocollants();
+      },
+      fin: (a, g, annule) => {
+        this.acGeste = null;
+        if (g.deplace && annule) { a.x = g.x0; a.y = g.y0; }
+        if (g.deplace && !annule) this.modifie(true);
+        if (!g.deplace) this.acChoisi = this.acChoisi === a.id ? null : a.id;
+        this.majAutocollants();
+      },
+      retirer: (a) => { this.n.autocollants = (this.n.autocollants || []).filter(x => x.id !== a.id); this.acChoisi = null; this.majAutocollants(); this.modifie(true); Geos.maj(this.pn.app); },
+    };
   }
   majFav() { const b = this.el.querySelectorAll(".doc-barre .btn")[1]; if (b) b.classList.toggle("fav-on", !!this.n.epingle); }
   modifie(tout) {
@@ -1005,6 +1053,7 @@ class EditeurTexte {
     const n = this.pn.note(this.n.id);
     if (!n) return this.pn.bibliotheque();
     if (n !== this.n || this.titre.value.trim() !== (n.titre || "").trim() || this.texte.value !== (n.texte || "")) this.pn.ouvrir(n.id);
+    else this.majAutocollants();
   }
 }
 
@@ -1059,6 +1108,7 @@ class EditeurCahier {
       boutonIcone("zoom-moins", "", () => this.setZoom(this.zoom / 1.2), "ghost"), el("span.mono.cah-zoom", {texte: ""}),
       boutonIcone("zoom-plus", "", () => this.setZoom(this.zoom * 1.2), "ghost"),
       boutonIcone("page-plus", "Page", () => this.menuPage(), "ghost"),
+      boutonAutocollants(() => this.ajouterAutocollant()),
       boutonVocaux(this.pn.app, {note: n.id}, `Note : ${n.titre || "Sans titre"}`, () => this.enregistrer()),
       boutonIcone("exporter", "", () => { this.enregistrer(); new ExportNote(this.n, this.pageCourante).montrer(); }, "ghost"),
       boutonIcone("reglages", "", () => { this.enregistrer(); new InfosDocument(this.pn, n).montrer(); }, "ghost"));
@@ -1389,13 +1439,14 @@ class EditeurCahier {
   peindre(pid) {
     const f = this.feuilles.get(pid);
     if (!f) return;
-    if (f.canevas) { this.peindreCanevas(f); this.majPostits(f); return; }
+    if (f.canevas) { this.peindreCanevas(f); this.majPostits(f); this.majAutocollants(f); return; }
     if (!f.alloue || f.aDessiner) this.allouer(f);
     f.aDessiner = false;
     const W = f.k * PAGE_L, H = f.page.h * f.k;
     f.ctx.clearRect(0, 0, W, H);
     dessinerPage(f.ctx, f.page, f.k, this.pc(), this.sel && this.sel.page === f.page ? this.sel : null);
     this.majPostits(f);
+    this.majAutocollants(f);
   }
   majNumero() {
     const z = this.pagesZone.getBoundingClientRect();
@@ -1484,6 +1535,7 @@ class EditeurCahier {
     if (this.n.pages.length <= 1) { informer("Pages", "Un cahier garde au moins une page."); return; }
     if ((p.traits.length || (p.textes || []).length) && !await dialogue("Supprimer la page", "Supprimer cette page et ce qui est écrit dessus ?", [["Annuler", false, "ghost"], ["Supprimer", true, "danger"]])) return;
     this.n.pages.splice(this.n.pages.indexOf(p), 1);
+    if (Array.isArray(this.n.autocollants)) this.n.autocollants = this.n.autocollants.filter(a => a.p !== p.id);   // ses autocollants retournent dans l'inventaire
     this.apresPages();
   }
   apresPages(aller) {
@@ -1511,6 +1563,7 @@ class EditeurCahier {
     if (f.canevas) this.installerCanevas(f);
   }
   appui(f, e) {
+    if (this.acChoisi) { this.acChoisi = null; for (const x of this.feuilles.values()) this.majAutocollants(x); }
     if (f.canevas && this.debutCanevas(f, e)) return;
     if (e.pointerType === "touch" && !this.doigt) return;
     if (this.outil === "main") return;
@@ -1760,6 +1813,55 @@ class EditeurCahier {
       this.peindre(p.id); this.modifie();
     });
     setTimeout(() => { ta.focus(); ajuster(); }, 20);
+  }
+
+  /* ----- autocollants (achetés dans la boutique avec des géos) : posés sur une page, glissés au doigt, au crayon ou à la souris */
+  async ajouterAutocollant() {
+    this.enregistrer();
+    const s = await choisirAutocollant(this.pn.app);
+    if (!s) return;
+    const p = this.pageCourante || this.n.pages[0], f = p && this.feuilles.get(p.id);
+    if (!f) return;
+    const z = this.pagesZone.getBoundingClientRect(), r = f.cv.getBoundingClientRect(), m = AC_TAILLE / 2;
+    let x = (z.left + z.width / 2 - r.left - (f.ox || 0)) / f.k, y = (z.top + z.height / 2 - r.top - (f.oy || 0)) / f.k;
+    if (!f.canevas) { x = Math.max(m, Math.min(PAGE_L - m, x)); y = Math.max(m, Math.min(p.h - m, y)); }
+    if (!Array.isArray(this.n.autocollants)) this.n.autocollants = [];
+    const a = {id: newId(), s, p: p.id, x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, t: AC_TAILLE};
+    this.n.autocollants.push(a);
+    this.acChoisi = a.id;
+    this.majAutocollants(f); this.modifie(); Geos.maj(this.pn.app);
+  }
+  majAutocollants(f) {
+    const liste = autocollantsNote(this.n).filter(a => a.p === f.page.id);
+    if (!f.acZones) f.acZones = new Map();
+    for (const [id, z] of f.acZones) if (!liste.some(a => a.id === id)) { z.remove(); f.acZones.delete(id); }
+    for (const a of liste) {
+      let z = f.acZones.get(a.id);
+      if (!z) { z = zoneAutocollant(a, this.rappelsAc(f)); f.div.append(z); f.acZones.set(a.id, z); }
+      z._ac = a;
+      const t = a.t * f.k;
+      z.style.cssText = `left:${(a.x - a.t / 2) * f.k + (f.ox || 0)}px;top:${(a.y - a.t / 2) * f.k + (f.oy || 0)}px;width:${t}px;height:${t}px`;
+      z.classList.toggle("choisi", this.acChoisi === a.id);
+    }
+  }
+  rappelsAc(f) {
+    return {
+      debut: (g) => { this.acGeste = g; },
+      bouge: (a, g, dx, dy) => {
+        let x = g.x0 + dx / f.k, y = g.y0 + dy / f.k;
+        if (!f.canevas) { const m = a.t / 2; x = Math.max(m, Math.min(PAGE_L - m, x)); y = Math.max(m, Math.min(f.page.h - m, y)); }
+        a.x = Math.round(x * 10) / 10; a.y = Math.round(y * 10) / 10;
+        this.majAutocollants(f);
+      },
+      fin: (a, g, annule) => {
+        this.acGeste = null;
+        if (g.deplace && annule) { a.x = g.x0; a.y = g.y0; }
+        if (g.deplace && !annule) this.modifie();
+        if (!g.deplace) { const choisi = this.acChoisi === a.id ? null : a.id; this.acChoisi = choisi; for (const x of this.feuilles.values()) this.majAutocollants(x); }
+        this.majAutocollants(f);
+      },
+      retirer: (a) => { this.n.autocollants = (this.n.autocollants || []).filter(x => x.id !== a.id); this.acChoisi = null; this.majAutocollants(f); this.modifie(); Geos.maj(this.pn.app); },
+    };
   }
 
   /* ----- post-it : se déplace en le glissant (doigt, Apple Pencil ou souris, sans lasso) ; un appui le rend translucide, un second le rétablit ;

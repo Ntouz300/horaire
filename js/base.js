@@ -45,8 +45,10 @@ const TAILLES = [["Petit", 90], ["Normal", 100], ["Grand", 115], ["Très grand",
 const ACCENTS = ["#5b9bff", "#3cc4c9", "#4fd1a1", "#f0a541", "#ff7a8d", "#a78bfa", "#e879f9", "#f2d35b"];
 const DEFAUT_REGLAGES = {theme: "nuit", accent: "", forme: 2, texte: 100, h_debut: 7, h_fin: 22, notes_blocs: true,
   plein_ecran: true, horloge: true, secondes: true, son: true, rappel_cours: 0,
-  prenom: "Antoine", objectif: 70, icones_theme: true, reduire_effets: false, son_ambiance: false, volume_ambiance: 60, brume: "normale"};
-const REG_LOCAUX = ["vue", "plein_ecran", "texte", "horaire", "page", "vue3d", "onglets_notes", "canevas_vues", "canevas_fond", "notes_repliees", "transferts_actif", "transferts_port", "icones_theme", "reduire_effets", "son_ambiance", "volume_ambiance", "brume"];   // réglages propres à l'appareil
+  prenom: "Antoine", objectif: 70, icones_theme: true, reduire_effets: false, son_ambiance: false, volume_ambiance: 60, brume: "normale",
+  jeux_son: true, jeux_anim: true, geos_apparition: true, jeux_mise: 50, jeux_choix: "roulette"};
+const REG_LOCAUX = ["vue", "plein_ecran", "texte", "horaire", "page", "vue3d", "onglets_notes", "canevas_vues", "canevas_fond", "notes_repliees", "transferts_actif", "transferts_port", "icones_theme", "reduire_effets", "son_ambiance", "volume_ambiance", "brume",
+  "jeux_son", "jeux_anim", "geos_apparition", "jeux_mise", "jeux_choix"];   // réglages propres à l'appareil
 const CATS_BASE = {
   info: ["Informatique (6GEN248)", "Informatique", true], graph: ["Sciences graphiques (6DDG100)", "Sc. graphiques", true],
   meca: ["Mécanique (6GMC108)", "Mécanique", true], ethique: ["Ingénierie et éthique (6GIN275)", "Éthique", true],
@@ -349,6 +351,28 @@ function normaliserVocaux(l) {
   }
   return out;
 }
+/* géos (monnaie des mini-jeux) : {appareil: {g: total gagné, d: total dépensé (mises + achats), j: jour, r: ramassés ce jour-là, a: {autocollant: achetés}}}.
+   Chaque appareil n'écrit que son propre compteur (section gx_<appareil>) : rien ne se perd ni ne se compte deux fois. */
+function entierPositif(x) { const n = Math.floor(Number(x) || 0); return n > 0 ? n : 0; }
+function normaliserCompteGeo(e) {
+  e = e && typeof e === "object" && !Array.isArray(e) ? e : {};
+  const a = {};
+  for (const [k, v] of Object.entries(e.a && typeof e.a === "object" && !Array.isArray(e.a) ? e.a : {})) { const n = entierPositif(v); if (k && n) a[k] = n; }
+  return {g: entierPositif(e.g), d: entierPositif(e.d), j: /^\d{4}-\d{2}-\d{2}$/.test(String(e.j || "")) ? String(e.j) : "", r: entierPositif(e.r), a};
+}
+function normaliserGeos(x) {
+  const out = {};
+  for (const [k, v] of Object.entries(x && typeof x === "object" && !Array.isArray(x) ? x : {})) if (k && v && typeof v === "object") out[k] = normaliserCompteGeo(v);
+  return out;
+}
+/* fusion de deux versions d'un même compteur : le plus élevé de chaque total est retenu (une mise n'est débitée qu'une fois) */
+function fusionCompteGeo(a, b) {
+  a = normaliserCompteGeo(a); b = normaliserCompteGeo(b);
+  const o = {g: Math.max(a.g, b.g), d: Math.max(a.d, b.d), j: a.j, r: a.r, a: Object.assign({}, a.a)};
+  if (b.j > a.j) { o.j = b.j; o.r = b.r; } else if (b.j === a.j) o.r = Math.max(a.r, b.r);
+  for (const [k, n] of Object.entries(b.a)) o.a[k] = Math.max(o.a[k] || 0, n);
+  return o;
+}
 function normaliser(d) {
   d = d && typeof d === "object" ? d : {};
   const out = {version: 4, modele: [], semaines: {}, echeances: [], notes: [], reglages: {}, categories: categoriesDefaut(),
@@ -365,6 +389,13 @@ function normaliser(d) {
   out.modeles = normaliserModeles(out.modeles);
   out.vocaux = normaliserVocaux(out.vocaux);
   out.notes_supprimees = normaliserTombes(out.notes_supprimees);
+  out.geos = normaliserGeos(out.geos);
+  for (const k of Object.keys(out)) {                       // compteurs reçus par une ancienne version (section gardée telle quelle)
+    if (!k.startsWith("gx_")) continue;
+    const id = k.slice(3);
+    if (id && out[k] && typeof out[k] === "object") out.geos[id] = fusionCompteGeo(out.geos[id], out[k]);
+    delete out[k];
+  }
   out.notes = out.notes.filter(n => !(n.id in out.notes_supprimees));      // une note supprimée exprès ne revient jamais
   out.horaires = listeHoraires(out);
   const ids = new Set(out.horaires.map(h => h.id));
@@ -420,6 +451,9 @@ function sectionsDe(d) {
     } else if (k === "vocaux") {
       // messages vocaux : une section par fiche (deux appareils peuvent en ajouter en même temps sans se gêner)
       for (const x of v || []) if (x && x.id) out["vx_" + x.id] = x;
+    } else if (k === "geos") {
+      // géos : une section par appareil (seul cet appareil la modifie)
+      for (const [id, e] of Object.entries(v || {})) if (id && e && typeof e === "object") out["gx_" + id] = normaliserCompteGeo(e);
     } else if (k.startsWith("h_") && v && typeof v === "object") {
       // autre horaire : une section pour l'horaire + une par semaine modifiée
       const r = {};
@@ -474,6 +508,11 @@ function poserSection(d, nom, valeur) {
     if (valeur === null || typeof valeur !== "object") { if (i >= 0) d.vocaux.splice(i, 1); return; }
     const v = normaliserVocaux([Object.assign({}, valeur, {id})])[0];
     if (i >= 0) d.vocaux[i] = v; else d.vocaux.push(v);
+  } else if (nom.startsWith("gx_")) {
+    const id = nom.slice(3);
+    if (!id || !valeur || typeof valeur !== "object") return;                     // un compteur ne disparaît jamais
+    if (!d.geos || typeof d.geos !== "object" || Array.isArray(d.geos)) d.geos = {};
+    d.geos[id] = fusionCompteGeo(d.geos[id], valeur);
   } else if (nom.startsWith("hs_")) {
     const i = nom.lastIndexOf("_"), id = nom.slice(3, i), l = nom.slice(i + 1);
     let ses = d["h_" + id];

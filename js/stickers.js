@@ -10,7 +10,7 @@ function spriteURL(nom, k) {
   const cle = nom + "@" + k;
   if (_spriteCache[cle]) return _spriteCache[cle];
   const s = SPRITES[nom]; if (!s) return "";
-  const cv = document.createElement("canvas"); cv.width = cv.height = 8 * k;
+  const cv = document.createElement("canvas"); cv.width = (s.rows[0] || "").length * k; cv.height = s.rows.length * k;
   const g = cv.getContext("2d");
   s.rows.forEach((row, y) => [...row].forEach((ch, x) => { if (ch !== ".") { g.fillStyle = s.pal[ch]; g.fillRect(x * k, y * k, k, k); } }));
   return (_spriteCache[cle] = cv.toDataURL("image/png"));

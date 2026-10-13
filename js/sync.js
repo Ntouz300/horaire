@@ -7,6 +7,7 @@ class Synchro {
     const c = Stock.lire("horaire_synchro", null) || {};
     this.cfg = Object.assign({url: "", cle: "", appareil: "ipad-" + newId().slice(0, 6), base: {}, tl: {}, supprimees: []}, c);
     if (!Array.isArray(this.cfg.supprimees)) this.cfg.supprimees = [];
+    if (!c.appareil) this.ecrireCfg();               // l'identifiant de l'appareil ne change plus (il porte le compteur de géos)
     this.distant = {};
     this.recuComplet = false;
     this.enVol = {};

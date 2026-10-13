@@ -32,6 +32,7 @@ class App {
     if (this.donnees) this.demarrerInterface();
     else this.ecranAccueil();
     this.sync.demarrer();
+    Apparitions.demarrer(this);
     document.addEventListener("keydown", (e) => this.clavier(e));
     window.addEventListener("resize", () => this.redessinerBientot());
     setInterval(() => this.ticSeconde(), 1000);
@@ -110,12 +111,22 @@ class App {
     Stock.ecrire("horaire_reglages_locaux", loc);
     return ok;
   }
-  /* geo (thème Hollow Knight) : une échéance de plus terminée dans l'horaire actif → petite célébration */
+  /* geo (thème Hollow Knight) : une échéance de plus terminée dans l'horaire actif → des géos et une petite célébration.
+     Une même échéance ne rapporte qu'une fois par ouverture de l'appli (la décocher puis la recocher ne rapporte rien). */
   verifierGeo(celebrer) {
     if (!this.donnees) return;
-    const g = geoHoraire(this.ses), ref = this._geoRef;
-    this._geoRef = [HID, g];
-    if (celebrer && ref && ref[0] === HID && g > ref[1]) celebrerGeo(g - ref[1], g);
+    if (!this._geoVus || this._geoHid !== HID) { this._geoVus = new Set(); celebrer = false; }
+    this._geoHid = HID;
+    let nouveaux = 0;
+    for (const e of this.ses.echeances) {
+      if (!e || !e.fait) continue;
+      const k = String(e.id || (e.quoi || "") + "|" + (e.date || ""));
+      if (!this._geoVus.has(k)) { this._geoVus.add(k); nouveaux++; }
+    }
+    if (celebrer && nouveaux && themeHK()) {
+      const n = Geos.gagner(this, nouveaux * GJ.echeance, true);
+      if (n) celebrerGeo(n, Geos.solde(this.donnees));
+    }
   }
   sauver() {
     this.verifierGeo(true);
@@ -129,7 +140,7 @@ class App {
   /* ---------- synchro */
   peutAppliquerDistant() {
     if (this.drag && this.drag.moved) return false;
-    if (this.page === "notes" && this.ecrans && (this.ecrans.notes.sale || (this.ecrans.notes.ed && (this.ecrans.notes.ed.geste || this.ecrans.notes.ed.texteOuvert)))) return false;
+    if (this.page === "notes" && this.ecrans && (this.ecrans.notes.sale || (this.ecrans.notes.ed && (this.ecrans.notes.ed.geste || this.ecrans.notes.ed.texteOuvert || this.ecrans.notes.ed.acGeste)))) return false;
     return !Pile.some(p => p.estModal);
   }
   apresDistant(noms) {
@@ -140,6 +151,7 @@ class App {
     this.enregistrerLocal();
     menageVocaux(this, noms);
     this.verifierGeo(false);
+    Geos.maj(this);
     this.statut(`Mis à jour depuis le PC à ${new Date().toTimeString().slice(0, 5)}`);
     let actif = this.donnees.reglages.horaire || "aut26";
     if (!listeHoraires(this.donnees).some(h => h.id === actif)) actif = this.donnees.reglages.horaire = "aut26";
@@ -185,7 +197,7 @@ class App {
     this.rail = new Rail(this);
     const H = el("div.ecran.ecran-horaire");
     this.ecrans = {horaire: {el: H}, accueil: new PageAccueil(this), notes: new PageNotes(this), resultats: new PageResultats(this), objets3d: new Page3D(this), transferts: new PageTransferts(this),
-      youtube: new PageLien(this, "youtube"), musique: new PageLien(this, "musique")};
+      youtube: new PageLien(this, "youtube"), musique: new PageLien(this, "musique"), jeux: new PageJeux(this)};
     zone.append(el("div.coque", null, this.rail.el, el("div.pages", null, ...Object.values(this.ecrans).map(e => e.el))));
     this.construireHoraire(H);
     this.aller(this.page);
@@ -196,6 +208,7 @@ class App {
     if (!this.ecrans || !this.ecrans[page]) page = "accueil";
     if (page !== "notes" && this.page === "notes" && this.ecrans) this.ecrans.notes.enregistrer();
     const change = this.page !== page;
+    if (change) Apparitions.vider();                    // les géos à ramasser restent sur la page où ils sont apparus
     this.page = page;
     for (const [k, e] of Object.entries(this.ecrans)) e.el.hidden = k !== page;
     document.body.dataset.page = page;
