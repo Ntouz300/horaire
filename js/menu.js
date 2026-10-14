@@ -72,7 +72,7 @@ function themeHK() { return T.DECOR === "hollow"; }
 function geoHoraire(ses) { return ((ses && ses.echeances) || []).filter(e => e.fait).length * 10; }
 /* la pièce de l'en-tête porte le solde de géos (monnaie des mini-jeux) ; une échéance terminée rapporte des géos */
 function geoPastille(app) {
-  return el("div.geo", {title: "Tes géos : touche pour ouvrir la boutique", role: "button", onclick: () => new Boutique(app).montrer()}, icone("hk_geo", 18), el("b.geos-solde", {texte: fmtGeos(Geos.solde(app.donnees))}), el("span", {texte: "geo"}));
+  return el("div.geo", {title: `Tes ${M("p")} : touche pour ouvrir la boutique`, role: "button", onclick: () => new Boutique(app).montrer()}, imgGeo(2), el("b.geos-solde", {texte: fmtGeos(Geos.solde(app.donnees))}), el("span.geos-nom", {texte: M("p")}));
 }
 function masqueSVG(plein, taille) {
   const p = [];
@@ -174,7 +174,7 @@ function celebrerGeo(n, total) {
   }
   document.querySelectorAll(".geo-gain").forEach(x => x.remove());
   const eclats = [0, 1, 2, 3, 4, 5].map(i => el("i.eclat", {style: {"--a": (i * 60 + 15) + "deg"}}));
-  const b = el("div.geo-gain" + (Decor.reduit ? ".calme" : ""), {"aria-hidden": "true"}, ...eclats, icone("hk_geo", 18), el("b", {texte: "+" + n}), el("span", {texte: "geo"}));
+  const b = el("div.geo-gain" + (Decor.reduit ? ".calme" : ""), {"aria-hidden": "true"}, ...eclats, imgGeo(2), el("b", {texte: "+" + n}), el("span.geos-nom", {texte: M("p")}));
   document.body.append(b);
   if (pos) {                                         // à gauche du compteur de geo de l'en-tête
     const bw = b.offsetWidth, bh = b.offsetHeight;
@@ -267,15 +267,67 @@ class Rail {
     haut.append(this.btnPlus);
     this.items.reglages = this.item("reglages", "Réglages");
     this.lblSync = el("div.rail-sync", {onclick: () => app.ouvrirSynchro()});
-    this.geos = el("button.rail-geos", {type: "button", title: `${fmtGeos(Geos.solde(app.donnees))} géos : touche pour ouvrir la boutique`, onclick: () => new Boutique(app).montrer()},
-      imgSprite("geo", 2), el("b.geos-court", {texte: fmtGeosCourt(Geos.solde(app.donnees))}));
-    this.el = el("nav.rail" + (cfg.compact ? ".compact" : ""), null, this.logo, this.geos, haut, el("div.espace"), this.lblSync,
+    this.geos = el("button.rail-geos", {type: "button", title: `${fmtGeos(Geos.solde(app.donnees))} ${M("p")} : touche pour ouvrir la boutique`, onclick: () => new Boutique(app).montrer()},
+      imgGeo(2), el("b.geos-court", {texte: fmtGeosCourt(Geos.solde(app.donnees))}));
+    // iPad et PC : le menu se replie (bouton, glisser vers la gauche) et se rouvre (poignée, glisser depuis le bord gauche)
+    this.btnReplier = el("button.rail-replier", {type: "button", title: "Replier le menu", "aria-label": "Replier le menu", onclick: () => this.replier(true)}, icone("retour", 20));
+    this.el = el("nav.rail" + (cfg.compact ? ".compact" : ""), null, this.btnReplier, this.logo, this.geos, haut, el("div.espace"), this.lblSync,
       el("button.rail-item.rail-perso", {type: "button", title: "Personnaliser le menu", onclick: () => new PersonnaliserMenu(app).montrer()}, el("span.rail-ico", null, icone("grille", 20)), el("span.rail-lbl", {texte: "Menu"})),
       this.items.reglages);
     this.maj();
+    this.poignee = el("button.rail-poignee", {type: "button", title: "Ouvrir le menu", "aria-label": "Ouvrir le menu", onclick: () => this.ouvrir()}, icone("liste", 22));
+    this.voile = el("div.rail-voile", {onclick: () => this.fermerTiroir()});
+    this.installerGlisser();
+    this.appliquerRepli();
+  }
+  /* menu replié : il devient un tiroir par-dessus la page */
+  replie() { return this.app.reglages.rail_replie === true && !document.body.classList.contains("tel"); }
+  appliquerRepli() {
+    const r = this.replie();
+    document.body.classList.toggle("rail-replie", r);
+    if (!r) document.body.classList.remove("rail-ouvert");
+    this.btnReplier.title = r ? "Fermer le menu" : "Replier le menu";
+    this.btnReplier.setAttribute("aria-label", this.btnReplier.title);
+  }
+  replier(v) {
+    if (this.replie() && v) { this.fermerTiroir(); return; }       // déjà replié : la flèche referme le tiroir
+    this.app.reglages.rail_replie = !!v;
+    this.app.enregistrerLocal();
+    this.appliquerRepli();
+    this.app.redessinerBientot && this.app.redessinerBientot();
+  }
+  ouvrir() { if (!this.replie()) { this.replier(false); return; } document.body.classList.add("rail-ouvert"); }
+  fermerTiroir() { document.body.classList.remove("rail-ouvert"); }
+  installerGlisser() {
+    if (Rail.glisseInstalle) return;                    // une seule fois (le menu est reconstruit quand on change d'horaire)
+    Rail.glisseInstalle = true;
+    const R = () => window.app && window.app.rail;
+    let d = null;
+    const bord = 24;
+    // événements tactiles (doigt et Apple Pencil) : ils arrivent jusqu'au bout même quand la page défile
+    document.addEventListener("touchstart", (e) => {
+      const t = e.changedTouches[0];
+      if (!R() || !t || e.touches.length > 1 || document.body.classList.contains("tel")) { d = null; return; }
+      const ouvert = document.body.classList.contains("rail-ouvert"), dansRail = !!(e.target.closest && e.target.closest(".rail"));
+      if ((R().replie() && !ouvert && t.clientX <= bord) || (ouvert && dansRail) || (!R().replie() && dansRail)) d = {x: t.clientX, y: t.clientY, id: t.identifier, dansRail};
+      else d = null;
+    }, {passive: true, capture: true});
+    document.addEventListener("touchend", (e) => {
+      const t = [...e.changedTouches].find(x => d && x.identifier === d.id);
+      if (!d || !t || !R()) return;
+      const dx = t.clientX - d.x, dy = t.clientY - d.y;
+      if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        if (dx > 0 && !d.dansRail) R().ouvrir();
+        else if (dx < 0 && d.dansRail) { if (document.body.classList.contains("rail-ouvert")) R().fermerTiroir(); else R().replier(true); }
+      }
+      d = null;
+    }, {passive: true, capture: true});
+    document.addEventListener("touchcancel", () => { d = null; }, {passive: true, capture: true});
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && R() && document.body.classList.contains("rail-ouvert")) R().fermerTiroir(); });
   }
   item(cle, titre) {
     return el("button.rail-item", {type: "button", "data-p": cle, onclick: () => {
+      this.fermerTiroir();
       if (cle === "horloge") this.app.ouvrirHorloge();
       else if (cle === "reglages") new Reglages(this.app).montrer();
       else this.app.aller(cle);
@@ -460,7 +512,7 @@ class PageAccueil {
       ["transferts", "Transferts", ficheTransferts(app.donnees).enLigne ? "PC joignable" : "PC hors ligne", "Fichiers entre le PC et l'iPad", null],
       ["youtube", "YouTube", "Navigateur", "S'ouvre dans le navigateur", null],
       ["musique", "Musique", "Apple Music", "S'ouvre dans le navigateur", null],
-      ["jeux", "Mini-jeux", fmtGeos(Geos.solde(app.donnees)) + " géos", "Roulette, machine à sous, blackjack…", null],
+      ["jeux", "Mini-jeux", fmtGeos(Geos.solde(app.donnees)) + " " + M("p"), "Roulette, machine à sous, blackjack…", null],
       ["horloge", "Horloge", res ? res.split("   ·   ")[0] : "Concentration", als.length ? `Prochaine alarme : ${fmt(als[0].heure)}` : "Pomodoro, minuterie, alarmes", null],
     ];
   }

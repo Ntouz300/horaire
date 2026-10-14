@@ -197,7 +197,7 @@ class NoteEditeur extends Modal {
       data.titre = prem.slice(0, 40) || (data.dessin ? "Note manuscrite" : "Sans titre");
     }
     if (this.n) Object.assign(this.n, data);
-    else this.app.donnees.notes.push(Object.assign({id: newId()}, data));
+    else { const nn = Object.assign({id: newId()}, data); this.app.donnees.notes.push(nn); nouvelleNote(this.app, nn.id); }
     this.fermer();
     this.app.changement();
   }
@@ -500,11 +500,18 @@ class Reglages extends Modal {
     g.append(etiquette("Décor Hollow Knight (cet appareil)"), el("div.petit.muted", {texte: "Brume"}),
       this.pills("brume", [["aucune", "Sans brume"], ["legere", "Légère"], ["normale", "Normale"], ["dense", "Dense"]]),
       this.cases.son_ambiance, el("div.petit.muted", {texte: "Volume de l'ambiance"}), this.pills("volume_ambiance", [[30, "Doux"], [60, "Moyen"], [90, "Fort"]]));
+    // Économie Firebase : chaque interrupteur est indépendant (propre à cet appareil)
+    const eco = el("div.col.reg-eco");
+    for (const [cle, t] of FB_ECO) { this.cases[cle] = caseACocher(this.d[cle] === true, cle === "fb_estimation" ? (v) => { this.lblEstim.hidden = !v; } : null, t); eco.append(this.cases[cle]); }
+    this.lblEstim = el("div.petit.muted.reg-estim", {texte: app.sync.estimation()});
+    this.lblEstim.hidden = this.d.fb_estimation !== true;
+    g.append(etiquette("Économie Firebase (cet appareil)"), eco, this.lblEstim,
+      el("div.petit.muted", {texte: "Réduit les écritures et le trafic vers la base gratuite. « Notes en synchronisation manuelle » : chaque nouvelle note créée ici reste sur cet appareil jusqu'à ce que tu la synchronises (menu des notes)."}));
     this.vPrenom = entree(this.d.prenom || "", {placeholder: "Ton prénom", maxlength: "30"});
     dr.append(etiquette("Ton prénom (page d'accueil)"), this.vPrenom);
     dr.append(etiquette("Synchronisation avec le PC"), el("div.rapides", null, app.lblSync ? el("span.mono.petit", {texte: app.lblSync.textContent, style: {color: app.lblSync.style.color}}) : null,
       petit("Détails…", () => app.ouvrirSynchro())));
-    this.barre([bouton("Tout réinitialiser", () => { this.d = clone(DEFAUT_REGLAGES); this.hd.value = "7"; this.hf.value = "22"; for (const [k, c] of Object.entries(this.cases)) { c.classList.toggle("on", ["reduire_effets", "son_ambiance"].includes(k) ? DEFAUT_REGLAGES[k] === true : DEFAUT_REGLAGES[k] !== false); } this.maj(); }, "danger")],
+    this.barre([bouton("Tout réinitialiser", () => { this.d = clone(DEFAUT_REGLAGES); this.hd.value = "7"; this.hf.value = "22"; for (const [k, c] of Object.entries(this.cases)) { c.classList.toggle("on", ["reduire_effets", "son_ambiance"].includes(k) || k.startsWith("fb_") ? DEFAUT_REGLAGES[k] === true : DEFAUT_REGLAGES[k] !== false); } this.maj(); }, "danger")],
       [bouton("Annuler", () => this.fermer()), bouton("Appliquer", () => this.valider(), "primary")]);
     this.maj();
   }

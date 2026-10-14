@@ -46,9 +46,29 @@ const ACCENTS = ["#5b9bff", "#3cc4c9", "#4fd1a1", "#f0a541", "#ff7a8d", "#a78bfa
 const DEFAUT_REGLAGES = {theme: "nuit", accent: "", forme: 2, texte: 100, h_debut: 7, h_fin: 22, notes_blocs: true,
   plein_ecran: true, horloge: true, secondes: true, son: true, rappel_cours: 0,
   prenom: "Antoine", objectif: 70, icones_theme: true, reduire_effets: false, son_ambiance: false, volume_ambiance: 60, brume: "normale",
-  jeux_son: true, jeux_anim: true, geos_apparition: true, jeux_mise: 50, jeux_choix: "roulette"};
+  jeux_son: true, jeux_anim: true, geos_apparition: true, jeux_mise: 50, jeux_choix: "roulette",
+  notes_sync: "auto", notes_locales: [], rail_replie: false,
+  fb_geos_local: false, fb_geos_groupe: false, fb_jeu_unique: false, fb_pause_fond: false, fb_notes_manuel: false, fb_estimation: false};
 const REG_LOCAUX = ["vue", "plein_ecran", "texte", "horaire", "page", "vue3d", "onglets_notes", "canevas_vues", "canevas_fond", "notes_repliees", "transferts_actif", "transferts_port", "icones_theme", "reduire_effets", "son_ambiance", "volume_ambiance", "brume",
-  "jeux_son", "jeux_anim", "geos_apparition", "jeux_mise", "jeux_choix"];   // réglages propres à l'appareil
+  "jeux_son", "jeux_anim", "geos_apparition", "jeux_mise", "jeux_choix", "notes_locales", "rail_replie",
+  "fb_geos_local", "fb_geos_groupe", "fb_jeu_unique", "fb_pause_fond", "fb_notes_manuel", "fb_estimation"];   // réglages propres à l'appareil
+/* synchronisation des notes : « auto » (toutes) ou « manuel » (interrupteur par note) ; le mode est synchronisé,
+   la liste des notes gardées sur cet appareil (notes_locales) ne l'est pas. Le réglage local fb_notes_manuel force le mode manuel ici. */
+function modeNotes(reg) { return reg && (reg.notes_sync === "manuel" || reg.fb_notes_manuel === true) ? "manuel" : "auto"; }
+/* nouvelle note créée ici : reste sur cet appareil si « Notes en synchronisation manuelle par défaut » est activé */
+function nouvelleNote(app, id) {
+  const r = app && app.donnees && app.donnees.reglages;
+  if (!r || r.fb_notes_manuel !== true || !id) return;
+  r.notes_locales = (Array.isArray(r.notes_locales) ? r.notes_locales : []).filter(x => x !== id).concat([id]);
+}
+function noteLocale(reg, id) { return modeNotes(reg) === "manuel" && Array.isArray(reg.notes_locales) && reg.notes_locales.includes(id); }
+/* « Économie Firebase » : interrupteurs propres à l'appareil (tous coupés par défaut) */
+const FB_ECO = [["fb_geos_local", "Désynchroniser les géos (le solde reste sur cet appareil)"],
+  ["fb_geos_groupe", "Regrouper l'écriture du compteur (toutes les 45 s ou à la fermeture)"],
+  ["fb_jeu_unique", "Un seul envoi par partie de mini-jeu"],
+  ["fb_pause_fond", "Pause de la synchro quand l'appli est en arrière-plan"],
+  ["fb_notes_manuel", "Notes en synchronisation manuelle par défaut"],
+  ["fb_estimation", "Afficher une estimation des données envoyées ce mois-ci"]];
 const CATS_BASE = {
   info: ["Informatique (6GEN248)", "Informatique", true], graph: ["Sciences graphiques (6DDG100)", "Sc. graphiques", true],
   meca: ["Mécanique (6GMC108)", "Mécanique", true], ethique: ["Ingénierie et éthique (6GIN275)", "Éthique", true],
@@ -144,6 +164,7 @@ function appliquerReglages(reg) {
   document.documentElement.dataset.brume = ["aucune", "legere", "normale", "dense"].includes(reg.brume) ? reg.brume : "normale";
   if (typeof Decor !== "undefined") Decor.appliquer(reg);
   if (typeof Ambiance !== "undefined") Ambiance.appliquer(reg);
+  if (typeof Geos !== "undefined") Geos.majVisuel(reg);
 }
 
 /* ---------- dates et heures */

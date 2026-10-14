@@ -288,6 +288,7 @@ async function importerPdf(app, u8, nom, dossier, couverture) {
   const n = normaliserNote({id: newId(), type: "cahier", titre: nomPropre(nom).replace(/\.pdf$/i, ""), dossier: dossier || "", fond: "blanc", papier: "blanc",
     couverture: couverture || "", fichier: id, maj: nowIsoMinutes(), pages: pagesPdf(id, tailles)});
   app.donnees.notes.unshift(n);
+  nouvelleNote(app, n.id);
   return n;
 }
 

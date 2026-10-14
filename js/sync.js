@@ -18,7 +18,12 @@ class Synchro {
     this.gen = 0;
     this.reessai = 0;
     this._timer = null;
-    document.addEventListener("visibilitychange", () => { if (!document.hidden) this.verifierConnexion(true); });
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) { this.viderAttente(); if (this.reg("fb_pause_fond")) this.pause(); }
+      else if (this.enPause) this.reprendre();
+      else this.verifierConnexion(true);
+    });
+    window.addEventListener("pagehide", () => this.viderAttente());
     window.addEventListener("online", () => this.verifierConnexion(true));
     setInterval(() => this.tic(), 1000);
   }
@@ -33,6 +38,44 @@ class Synchro {
   }
 
   configuree() { return !!(this.cfg.url && this.cfg.cle); }
+  reg(cle) { const r = this.app.reglages; return !!(r && r[cle] === true); }
+
+  /* ---------- Économie Firebase (réglages propres à l'appareil) */
+  /* section jamais envoyée ni reçue ici : géos désynchronisés, note non synchronisée */
+  exclue(nom) {
+    if (nom.startsWith("gx_")) return this.reg("fb_geos_local");
+    if (nom.startsWith("n_") || nom.startsWith("np_")) return noteLocale(this.app.reglages, nom.startsWith("n_") ? nom.slice(2) : nom.split("_")[1]);
+    return false;
+  }
+  /* compteur de géos gardé pour plus tard : partie de mini-jeu en cours, ou écriture regroupée (45 s) */
+  differee(nom) {
+    if (!nom.startsWith("gx_") || this.forcerGeos) return false;
+    if (this.reg("fb_jeu_unique") && typeof Geos !== "undefined" && Geos.partieEnCours()) return true;
+    if (this.reg("fb_geos_groupe") && Date.now() - (this.dernierGeos || 0) < 45000) return true;
+    return false;
+  }
+  /* envoie tout de suite ce qui attend (fermeture, arrière-plan) */
+  viderAttente() {
+    if (!this.configuree() || !this.recuComplet || !this.app.donnees) return;
+    this.forcerGeos = true;
+    try { this.localChange(true); } finally { this.forcerGeos = false; }
+  }
+  pause() { if (this.enPause || !this.configuree()) return; this.enPause = true; this.fermer(); this.etat = "en pause"; this.detail = "appli en arrière-plan"; this.app.majEtatSynchro(); }
+  reprendre() { this.enPause = false; this.demarrer(); }
+  /* estimation des données échangées ce mois-ci (cet appareil) */
+  compter(sens, n) {
+    const mois = iso(new Date()).slice(0, 7);
+    let st = this.cfg.stats;
+    if (!st || st.mois !== mois) st = this.cfg.stats = {mois, envoi: 0, recu: 0};
+    st[sens] = (st[sens] || 0) + n;
+    this._statsSales = true;
+  }
+  estimation() {
+    const st = this.cfg.stats, mois = iso(new Date()).slice(0, 7);
+    const f = (n) => n < 1e6 ? Math.max(1, Math.round(n / 1000)) + " ko" : (Math.round(n / 1e5) / 10).toString().replace(".", ",") + " Mo";
+    if (!st || st.mois !== mois) return "Ce mois-ci : rien d'envoyé pour l'instant.";
+    return `Ce mois-ci (cet appareil) : environ ${f(st.envoi || 0)} envoyés et ${f(st.recu || 0)} reçus.`;
+  }
   ecrireCfg() { Stock.ecrire("horaire_synchro", this.cfg); }
   urlBase() { return this.cfg.url.replace(/\/+$/, "") + "/h/" + this.cfg.cle + "/v"; }
 
@@ -82,6 +125,7 @@ class Synchro {
         if (!ok()) return;
         this.dernierSignal = Date.now();
         if (this.etat !== "connectée") { this.etat = "connectée"; this.detail = ""; this.app.majEtatSynchro(); }
+        this.compter("recu", (m.data || "").length);
         let msg; try { msg = JSON.parse(m.data); } catch (e) { return; }
         this.evenement(ev, msg);
       });
@@ -98,14 +142,16 @@ class Synchro {
   }
 
   verifierConnexion(force) {
-    if (!this.configuree()) return;
+    if (!this.configuree() || this.enPause) return;
     const mort = !this.es || this.es.readyState === 2 || Date.now() - (this.dernierSignal || 0) > 75000;
     if (mort || (force && this.etat !== "connectée")) this.demarrer();
   }
 
   tic() {
-    if (!this.configuree()) return;
+    if (!this.configuree() || this.enPause) return;
     if (Date.now() - (this.dernierSignal || 0) > 75000 && this.etat !== "erreur") this.demarrer();
+    if (this.geosEnAttente && this.recuComplet && this.app.donnees && (Date.now() - (this.dernierGeos || 0) >= 45000 || !this.reg("fb_geos_groupe"))) { this.geosEnAttente = false; this.localChange(); }
+    if (this._statsSales && Date.now() - (this._statsT || 0) > 30000) { this._statsT = Date.now(); this._statsSales = false; this.ecrireCfg(); }
     if (this.reessai && Date.now() >= this.reessai && this.recuComplet) { this.reessai = 0; this.detail = ""; this.renvoyer(); }
     if (this.attente.length && this.app.peutAppliquerDistant()) this.appliquerAttente();
   }
@@ -162,6 +208,7 @@ class Synchro {
     const aAppliquer = {}, aEnvoyer = [];
     const base = this.cfg.base, tl = this.cfg.tl;
     for (const nom of Array.from(noms).sort()) {
+      if (this.exclue(nom)) continue;                    // propre à cet appareil (Économie Firebase, note non synchronisée)
       const loc = nom in locales ? canon(locales[nom]) : null;
       const b = nom in base ? base[nom] : null;
       const rv = this.distant[nom];
@@ -234,12 +281,14 @@ class Synchro {
   sale() {
     const locales = sectionsDe(this.app.donnees), base = this.cfg.base;
     const noms = new Set([...Object.keys(locales), ...Object.keys(base)]);
-    return Array.from(noms).filter(n => (n in locales ? canon(locales[n]) : null) !== (n in base ? base[n] : null));
+    return Array.from(noms).filter(n => !this.exclue(n) && (n in locales ? canon(locales[n]) : null) !== (n in base ? base[n] : null));
   }
 
   localChange() {
     if (!this.configuree() || !this.recuComplet || !this.app.donnees) return;
-    const noms = this.sale();
+    let noms = this.sale();
+    const garde = noms.filter(n => this.differee(n));
+    if (garde.length) { this.geosEnAttente = true; noms = noms.filter(n => !garde.includes(n)); }
     const now = Date.now();
     for (const n of noms) this.cfg.tl[n] = now;
     if (noms.length) { this.envoyer(noms); this.ecrireCfg(); }
@@ -250,6 +299,8 @@ class Synchro {
     const locales = sectionsDe(this.app.donnees);
     const lot = {}, now = Date.now();
     for (const n of noms) {
+      if (this.exclue(n)) continue;
+      if (n.startsWith("gx_")) this.dernierGeos = Date.now();
       const ent = this.enterree(n);
       const j = ent ? null : n in locales ? canon(locales[n]) : null;                             // note supprimée exprès : seulement des suppressions
       if (j === null && n.startsWith("np_") && !ent) { delete this.cfg.base[n]; continue; }       // une page retirée l'est par n_<id> : jamais de suppression de contenu de page
@@ -271,7 +322,9 @@ class Synchro {
     if (!Object.keys(lot).length) return;
     const gen = this.gen;
     this.app.majEtatSynchro();
-    fetch(this.urlBase() + ".json", {method: "PATCH", headers: {"Content-Type": "application/json"}, body: JSON.stringify(lot)})
+    const corps = JSON.stringify(lot);
+    this.compter("envoi", corps.length);
+    fetch(this.urlBase() + ".json", {method: "PATCH", headers: {"Content-Type": "application/json"}, body: corps, keepalive: corps.length < 60000})
       .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
       .then(() => {
         for (const [n, v] of Object.entries(lot)) {

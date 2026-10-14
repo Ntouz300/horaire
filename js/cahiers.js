@@ -427,6 +427,7 @@ class PageNotes {
     tri.addEventListener("change", () => { this.tri = tri.value; this.memoUI(); this.grille(); });
     const vue = boutonIcone(this.vue === "grille" ? "liste" : "grille", "", () => { this.vue = this.vue === "grille" ? "liste" : "grille"; this.memoUI(); this.bibliotheque(); }, "ghost"); vue.classList.add("nb-vue");
     this.titreFiltre = el("h1.page-h1");
+    main.append(this.barreSync());
     main.append(el("header.nb-tete", null, this.titreFiltre, el("span.espace"),
       el("div.nt-recherche-zone.nb-rech", null, icone("recherche", 18), this.recherche), tri, vue,
       cls(boutonIcone("coche", this.modeSel ? "Terminé" : "Sélectionner", () => this.basculerSelection(), this.modeSel ? "primary" : "ghost"), "nb-selectionner"),
@@ -439,6 +440,27 @@ class PageNotes {
     this.zoneDocs = el("div.nb-docs" + (this.vue === "liste" ? ".liste-docs" : "") + (this.modeSel ? ".en-selection" : ""));
     main.append(this.zoneDocs);
     this.grille();
+  }
+
+  /* ----- synchronisation des notes : automatique (toutes) ou manuelle (interrupteur par note) */
+  barreSync() {
+    const app = this.app, r = app.reglages, mode = modeNotes(r), force = r.fb_notes_manuel === true;
+    const poser = (v) => { if (force && v === "auto") { Notifs.bulle("Le réglage « Notes en synchronisation manuelle par défaut » (Économie Firebase) garde le mode manuel sur cet appareil."); return; }
+      app.donnees.reglages.notes_sync = v; app.sauver(); this.bibliotheque(); };
+    const nbLoc = (app.donnees.notes || []).filter(n => noteLocale(r, n.id)).length;
+    return el("div.nb-sync", null, el("span.nb-sync-lbl", null, icone("transferts", 16), el("span", {texte: "Synchronisation"})),
+      el("div.seg", null, petit("Automatique", () => poser("auto"), mode === "auto" ? "tab_on" : "tab"), petit("Manuelle", () => poser("manuel"), mode === "manuel" ? "tab_on" : "tab")),
+      el("span.petit.muted.nb-sync-aide", {texte: mode === "auto" ? "Toutes les notes sont synchronisées." : `Touche « Synchronisée » sur une note pour la garder sur cet appareil.${nbLoc ? ` ${nbLoc} note${nbLoc > 1 ? "s" : ""} sur cet appareil seulement.` : ""}`}));
+  }
+  basculerSyncNote(n) {
+    const app = this.app, r = app.donnees.reglages, l = Array.isArray(r.notes_locales) ? r.notes_locales.slice() : [];
+    const i = l.indexOf(n.id);
+    if (i >= 0) l.splice(i, 1); else l.push(n.id);
+    r.notes_locales = l;
+    app.enregistrerLocal();
+    if (i >= 0) app.sync.localChange();                  // de nouveau synchronisée : envoyée tout de suite
+    Notifs.bulle(i >= 0 ? `« ${n.titre || "Sans titre"} » est synchronisée.` : `« ${n.titre || "Sans titre"} » reste sur cet appareil.`);
+    this.bibliotheque();
   }
 
   /* ----- sélection de plusieurs documents (supprimer, dupliquer, copier, déplacer, matière, favori, exporter) */
@@ -688,10 +710,19 @@ class PageNotes {
     chev.addEventListener("click", (e) => { e.stopPropagation(); e.preventDefault(); this.basculerRepli(n, c, chev); });
     chev.addEventListener("contextmenu", (e) => { e.stopPropagation(); e.preventDefault(); });
     const surIpad = IPHONE && n.type === "cahier";       // cahier manuscrit : visible sur iPhone, mais il s'ouvre sur l'iPad ou le PC
+    let bSync = null;
+    if (modeNotes(this.app.reglages) === "manuel") {
+      const loc = noteLocale(this.app.reglages, n.id);
+      bSync = el("button.doc-sync" + (loc ? ".local" : ""), {type: "button", role: "switch", "aria-checked": String(!loc),
+        title: loc ? "Non synchronisée : reste sur cet appareil (touche pour la synchroniser)" : "Synchronisée (touche pour la garder sur cet appareil)"},
+        el("span.doc-sync-pt"), el("span", {texte: loc ? "Sur cet appareil" : "Synchronisée"}));
+      for (const ev of ["pointerdown", "pointerup", "touchstart", "mousedown"]) bSync.addEventListener(ev, (e) => e.stopPropagation());
+      bSync.addEventListener("click", (e) => { e.stopPropagation(); e.preventDefault(); this.basculerSyncNote(n); });
+    }
     const c = el("div.doc" + (repliee ? ".repliee" : "") + (surIpad ? ".sur-ipad" : ""), {onclick: (e) => this.clicCarte(n, e)}, el("div.doc-contenu", null, vignette),
       el("div.doc-info", null,
         el("div.doc-titre", null, chev, n.epingle ? el("span.nt-epi", null, icone("etoile", 13)) : null, el("b", {texte: n.titre || "Sans titre"})),
-        el("div.doc-sous", null, pastille(col, 7), el("span", {texte: [n.type === "cahier" ? `${n.pages.length} page${n.pages.length > 1 ? "s" : ""}` : "Texte", d ? dateCourte(d) : "", surIpad ? "iPad / PC" : ""].filter(Boolean).join(" · ")}))),
+        el("div.doc-sous", null, pastille(col, 7), el("span", {texte: [n.type === "cahier" ? `${n.pages.length} page${n.pages.length > 1 ? "s" : ""}` : "Texte", d ? dateCourte(d) : "", surIpad ? "iPad / PC" : ""].filter(Boolean).join(" · ")})), bSync),
       plus);
     if (this.modeSel) c.append(el("span.doc-coche", {"aria-hidden": "true"}, icone("coche", 16)));
     this.cartes.set(n.id, c);
@@ -770,6 +801,7 @@ class PageNotes {
       dossier: this.filtre.startsWith("d:") ? this.filtre.slice(2) : "", epingle: this.filtre === "*"}, opts));
     if (n.type === "cahier") n.pages = [pageVide(n.fond)];
     this.app.donnees.notes.unshift(n);
+    nouvelleNote(this.app, n.id);
     this.app.sauver();
     this.ouvrir(n.id);
     return n;

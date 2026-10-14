@@ -198,7 +198,7 @@ class App {
     const H = el("div.ecran.ecran-horaire");
     this.ecrans = {horaire: {el: H}, accueil: new PageAccueil(this), notes: new PageNotes(this), resultats: new PageResultats(this), objets3d: new Page3D(this), transferts: new PageTransferts(this),
       youtube: new PageLien(this, "youtube"), musique: new PageLien(this, "musique"), jeux: new PageJeux(this)};
-    zone.append(el("div.coque", null, this.rail.el, el("div.pages", null, ...Object.values(this.ecrans).map(e => e.el))));
+    zone.append(el("div.coque", null, this.rail.el, el("div.pages", null, ...Object.values(this.ecrans).map(e => e.el))), this.rail.voile, this.rail.poignee);
     this.construireHoraire(H);
     this.aller(this.page);
   }
@@ -210,6 +210,7 @@ class App {
     const change = this.page !== page;
     if (change) Apparitions.vider();                    // les géos à ramasser restent sur la page où ils sont apparus
     this.page = page;
+    if (change) Apparitions.planifier();                // plus fréquents dans Mini-jeux, plus rares ailleurs
     for (const [k, e] of Object.entries(this.ecrans)) e.el.hidden = k !== page;
     document.body.dataset.page = page;
     if (page !== "horaire") document.body.classList.remove("carnet-ouvert");
@@ -309,9 +310,17 @@ class App {
       this.onglets[cle] = b; tabs.append(b);
       this.pages[cle] = el("div.page");
     }
-    const fermerCarnet = bouton("✕", () => document.body.classList.remove("carnet-ouvert"), "ghost", {title: "Fermer", "aria-label": "Fermer le carnet"});
+    const fermerCarnet = bouton("Fermer", () => document.body.classList.remove("carnet-ouvert"), "primary", {title: "Fermer le carnet", "aria-label": "Fermer le carnet"});
     fermerCarnet.classList.add("carnet-fermer");
-    tabs.append(fermerCarnet);
+    tabs.append(el("b.carnet-titre", {texte: "Carnet"}), fermerCarnet);
+    // iPhone : glisser l'en-tête du carnet vers le bas le ferme aussi
+    let dep = null;
+    tabs.addEventListener("touchstart", (e) => { const t = e.changedTouches[0]; dep = t ? {x: t.clientX, y: t.clientY} : null; }, {passive: true});
+    tabs.addEventListener("touchend", (e) => {
+      const t = e.changedTouches[0];
+      if (dep && t && t.clientY - dep.y > 60 && Math.abs(t.clientX - dep.x) < 50 && document.body.classList.contains("tel")) document.body.classList.remove("carnet-ouvert");
+      dep = null;
+    }, {passive: true});
     const carnet = el("aside.carte.carnet", null, tabs, this.pages.taches, this.pages.ech, this.pages.notes);
     this.pageTaches(this.pages.taches);
     this.pageEcheances(this.pages.ech);

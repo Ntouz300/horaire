@@ -1,8 +1,8 @@
 /* Service worker : l'app s'ouvre même sans Internet (les données restent sur l'iPad et se synchronisent au retour). */
-const VERSION = "horaire-v23";
-const FICHIERS = ["./", "index.html", "app.css?v=23", "manifest.webmanifest", "icones/icone-180.png", "icones/icone-192.png", "icones/icone-512.png",
-  "js/base.js?v=23", "js/stickers.js?v=23", "js/icones.js?v=23", "js/ui.js?v=23", "js/decor.js?v=23", "js/ambiance.js?v=23", "js/sync.js?v=23", "js/main.js?v=23", "js/grille.js?v=23", "js/panneaux.js?v=23", "js/editeurs.js?v=23",
-  "js/horloge.js?v=23", "js/dessin.js?v=23", "js/menu.js?v=23", "js/cahiers.js?v=23", "js/pdfs.js?v=23", "js/exports.js?v=23", "js/objets3d.js?v=23", "js/transferts.js?v=23", "js/vocaux.js?v=23", "js/goodnotes.js?v=23", "js/jeux.js?v=23",
+const VERSION = "horaire-v24";
+const FICHIERS = ["./", "index.html", "app.css?v=24", "manifest.webmanifest", "icones/icone-180.png", "icones/icone-192.png", "icones/icone-512.png",
+  "js/base.js?v=24", "js/stickers.js?v=24", "js/icones.js?v=24", "js/ui.js?v=24", "js/decor.js?v=24", "js/ambiance.js?v=24", "js/sync.js?v=24", "js/main.js?v=24", "js/grille.js?v=24", "js/panneaux.js?v=24", "js/editeurs.js?v=24",
+  "js/horloge.js?v=24", "js/dessin.js?v=24", "js/menu.js?v=24", "js/cahiers.js?v=24", "js/pdfs.js?v=24", "js/exports.js?v=24", "js/objets3d.js?v=24", "js/transferts.js?v=24", "js/vocaux.js?v=24", "js/goodnotes.js?v=24", "js/jeux.js?v=24",
   "decor/hk_racines.webp?v=1", "decor/hk_cristaux.webp?v=1", "decor/hk_lointain.webp?v=1", "decor/hk_rayons.webp?v=1", "decor/hk_brume.webp?v=1", "decor/hk_lueur.webp?v=1",
   "js/vendor/pdf.min.mjs", "js/vendor/pdf.worker.min.mjs"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(FICHIERS)).then(() => self.skipWaiting())); });
