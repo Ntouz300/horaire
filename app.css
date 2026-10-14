@@ -1632,3 +1632,21 @@ body.tel .nb-tete .page-h1 { white-space: normal; overflow-wrap: anywhere; min-w
 }
 .mp-txt b, .mp-txt span { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
 @media (max-width: 360px) { body.tel .lbl-sync { display: none; } }
+
+/* ---- v24.1 boutique : en-tête fixe, liste défilante, barre du bas non collante (iOS Safari) ---- */
+.carte-modale.boutique { position: relative; display: flex; flex-direction: column; overflow: hidden; }
+.carte-modale.boutique > .titre-modal, .carte-modale.boutique > .sous-titre { flex: 0 0 auto; padding-right: 52px; }
+.carte-modale.boutique .bq-zone { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y; }
+.carte-modale.boutique > .erreur, .carte-modale.boutique > .barre-actions { flex: 0 0 auto; }
+.bq-x { position: absolute; top: 12px; right: 12px; z-index: 5; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line2);
+  background: var(--surface2); color: var(--ink); font: 700 18px/1 var(--f-ui, sans-serif); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+body.tel .carte-modale.boutique, body.tel .carte-modale.boutique.large {
+  height: calc(100vh - max(14px, env(safe-area-inset-top))); height: calc(100dvh - max(14px, env(safe-area-inset-top)));
+  max-height: calc(100vh - max(14px, env(safe-area-inset-top))); max-height: calc(100dvh - max(14px, env(safe-area-inset-top))); }
+body.tel .carte-modale.boutique .barre-actions { position: static; margin: 8px 0 0; padding: 8px 0 max(6px, env(safe-area-inset-bottom)); }
+body.tel .carte-modale.boutique .barre-actions .btn { min-height: 44px; }
+.bq-art > * { max-width: 100%; overflow-wrap: anywhere; }
+body.tel .carte-modale.boutique .bq-grille { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (orientation: landscape) { body.tel .carte-modale.boutique .bq-grille { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.bq-art > * { overflow-wrap: break-word; word-break: normal; hyphens: auto; -webkit-hyphens: auto; }
+.bq-art .bq-rare { white-space: normal; }

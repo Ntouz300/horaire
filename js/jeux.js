@@ -260,6 +260,10 @@ class Boutique extends Modal {
     this.zone = el("div.bq-zone");
     this.carte.append(this.zone);
     this.barre([], [bouton("Fermer", () => this.fermer(), "primary")]);
+    /* croix en haut : toujours visible, même si la feuille est coupée par la barre de Safari */
+    const x = el("button.bq-x", {type: "button", "aria-label": "Fermer", texte: "✕"});
+    x.addEventListener("click", (e) => { e.preventDefault(); this.fermer(); });
+    this.carte.append(x);
     this.dessiner();
   }
   dessiner() {
