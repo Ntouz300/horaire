@@ -1088,7 +1088,9 @@ class EditeurTexte {
         boutonVocaux(pn.app, {note: n.id}, `Note : ${n.titre || "Sans titre"}`, () => this.enregistrer()),
         boutonIcone("reglages", "", () => { this.enregistrer(); new InfosDocument(pn, n).montrer(); }, "ghost"),
         boutonIcone("exporter", "", () => { this.enregistrer(); new ExportNote(n, null).montrer(); }, "ghost")),
-      el("div.cah-barre.nt-outils", null, el("div.cah-outils", null, boutonAutocollants(() => this.ajouterAutocollant()))),
+      el("div.cah-barre.nt-outils", null, el("div.cah-outils", null, boutonAutocollants(() => this.ajouterAutocollant()), el("span.cah-sep"),
+        el("button.cah-outil", {type: "button", title: "Annuler (autocollants)", "aria-label": "Annuler", onclick: () => this.annulerAc()}, icone("annuler", 20)),
+        el("button.cah-outil", {type: "button", title: "Rétablir (autocollants)", "aria-label": "Rétablir", onclick: () => this.refaireAc()}, icone("refaire", 20)))),
       el("section.carte.doc-texte-ed", {style: {background: pc.fond, color: pc.encre}}, this.titre, el("div.nt-sep"), this.texte));
     // thème Hollow Knight : les notes au papier par défaut prennent l'allure d'un journal ancien
     if (themeHK() && !PAPIER_COUL[n.papier]) {
@@ -1101,8 +1103,13 @@ class EditeurTexte {
     this.calque = el("div.ac-calque");
     const feuille = this.el.querySelector(".doc-texte-ed");
     feuille.append(this.calque);
-    feuille.addEventListener("pointerdown", () => { if (this.acChoisi) { this.acChoisi = null; this.majAutocollants(); } });
+    feuille.addEventListener("pointerdown", () => { if (this.acChoisi) this.choisirAc(null); });
     this.acZones = new Map();
+    this.histoAc = []; this.refaitAc = [];
+    this.barreAc = el("div.cah-sel.nt-sel", {hidden: true});         // barre flottante de l'autocollant choisi (ne déplace rien)
+    this.el.append(this.barreAc);
+    this._clavierAc = (e) => { if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "d" && this.acChoisi && this.el.isConnected) { e.preventDefault(); this.dupliquerAc(); } };
+    document.addEventListener("keydown", this._clavierAc);
     this.majFav();
     requestAnimationFrame(() => this.majAutocollants());
   }
@@ -1112,10 +1119,44 @@ class EditeurTexte {
     if (!s) return;
     if (!Array.isArray(this.n.autocollants)) this.n.autocollants = [];
     const a = {id: newId(), s, p: "", x: 500 + (alea(161) - 80), y: 420 + (alea(161) - 80), t: AC_TAILLE};
+    this.snapAc();
     this.n.autocollants.push(a);
-    this.acChoisi = a.id;
-    this.majAutocollants(); this.modifie(true); Geos.maj(this.pn.app);
+    this.choisirAc(a.id); this.modifie(true); Geos.maj(this.pn.app);
   }
+  /* ----- autocollants : choix, duplication, annuler / rétablir (v30/v28) */
+  choisirAc(id) {
+    this.acChoisi = id;
+    this.majAutocollants();
+    if (!id) { this.barreAc.hidden = true; return; }
+    remplirBarreAc(this.barreAc, {dupliquer: () => this.dupliquerAc(), retirer: () => { const a = (this.n.autocollants || []).find(x => x.id === this.acChoisi); if (a) this.rappelsAc().retirer(a); },
+      fermer: () => this.choisirAc(null)});
+    this.placerBarreAc();
+  }
+  /* barre de l'autocollant choisi : en bas si elle ne le cache pas, sinon juste sous lui, sinon juste au-dessus (jamais par-dessus) */
+  placerBarreAc() {
+    const b = this.barreAc, z = this.acZones.get(this.acChoisi);
+    b.classList.remove("pres"); b.style.top = "";
+    if (b.hidden || !z) return;
+    eviterRecouvrement(b, [z]);
+    if (!b.classList.contains("en-haut")) return;
+    b.classList.remove("en-haut");
+    const c = this.el.getBoundingClientRect(), r = z.getBoundingClientRect(), h = b.offsetHeight, m = 30;
+    let top = r.bottom + m - c.top;
+    if (top + h > c.height - 8) top = r.top - m - h - c.top;
+    if (top < 0) top = Math.max(0, c.height - h - 8);
+    b.classList.add("pres"); b.style.top = Math.round(top) + "px";
+  }
+  dupliquerAc() {
+    const a = (this.n.autocollants || []).find(x => x.id === this.acChoisi);
+    if (!a) return;
+    this.snapAc();
+    const c = copieAutocollant(a, 20, [1000, 1000]);
+    this.n.autocollants.push(c);
+    this.choisirAc(c.id); this.modifie(true);
+  }
+  snapAc() { this.histoAc.push(clone(this.n.autocollants || [])); if (this.histoAc.length > 60) this.histoAc.shift(); this.refaitAc = []; }
+  annulerAc() { const h = this.histoAc.pop(); if (!h) return; this.refaitAc.push(clone(this.n.autocollants || [])); this.n.autocollants = h; this.choisirAc(null); this.modifie(true); }
+  refaireAc() { const h = this.refaitAc.pop(); if (!h) return; this.histoAc.push(clone(this.n.autocollants || [])); this.n.autocollants = h; this.choisirAc(null); this.modifie(true); }
   majAutocollants() {
     const liste = autocollantsNote(this.n);
     for (const [id, z] of this.acZones) if (!liste.some(a => a.id === id)) { z.remove(); this.acZones.delete(id); }
@@ -1130,7 +1171,7 @@ class EditeurTexte {
   }
   rappelsAc() {
     return {
-      debut: (g) => { this.acGeste = g; },
+      debut: (g) => { this.acGeste = g; this.snapAc(); g.snap = this.histoAc.length; },
       bouge: (a, g, dx, dy) => {
         const r = this.calque.getBoundingClientRect();
         a.x = Math.round(Math.max(0, Math.min(1000, g.x0 + dx / Math.max(1, r.width) * 1000)) * 10) / 10;
@@ -1142,13 +1183,16 @@ class EditeurTexte {
         this.acGeste = null;
         if (g.deplace && annule) { a.x = g.x0; a.y = g.y0; }
         if (g.deplace && !annule) this.modifie(true);
+        if (g.deplace && this.acChoisi === a.id) requestAnimationFrame(() => this.placerBarreAc());
+        if ((!g.deplace || annule) && this.histoAc.length === g.snap) this.histoAc.pop();     // rien n'a changé : pas d'étape d'annulation
         if (g.taille) { this.majAutocollants(); return; }
-        if (!g.deplace) this.acChoisi = this.acChoisi === a.id ? null : a.id;
+        if (!g.deplace) { this.choisirAc(this.acChoisi === a.id ? null : a.id); return; }
         this.majAutocollants();
       },
-      retirer: (a) => { this.n.autocollants = (this.n.autocollants || []).filter(x => x.id !== a.id); this.acChoisi = null; this.majAutocollants(); this.modifie(true); Geos.maj(this.pn.app); },
+      retirer: (a) => { this.snapAc(); this.n.autocollants = (this.n.autocollants || []).filter(x => x.id !== a.id); this.choisirAc(null); this.modifie(true); Geos.maj(this.pn.app); },
     };
   }
+  detruire() { document.removeEventListener("keydown", this._clavierAc); }
   majFav() { const b = this.el.querySelectorAll(".doc-barre .btn")[1]; if (b) b.classList.toggle("fav-on", !!this.n.epingle); }
   modifie(tout) {
     this.pn.sale = true; this.etat.textContent = "Modification…";
@@ -1205,6 +1249,12 @@ class EditeurCahier {
       this.el.classList.toggle("espace-presse", this.espace);
     };
     document.addEventListener("keydown", this._clavier); document.addEventListener("keyup", this._clavier);
+    this._clavierD = (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== "d" || !this.el || !this.el.isConnected) return;
+      const cible = e.target && e.target.tagName; if (cible === "TEXTAREA" || cible === "INPUT") return;
+      if (this.acChoisi) { e.preventDefault(); this.dupliquerAc(); } else if (this.sel) { e.preventDefault(); this.dupliquerSel(); }
+    };
+    document.addEventListener("keydown", this._clavierD);
     this.construire();
   }
   memo() {
@@ -1247,7 +1297,7 @@ class EditeurCahier {
     this.dessinerMiniatures();
     this.pagesZone.addEventListener("scroll", () => { if (!this._rafN) this._rafN = requestAnimationFrame(() => { this._rafN = 0; this.majNumero(); this.memoPosition(); }); }, {passive: true});
   }
-  detruire() { this.memoPosition(); this.enregistrerVue(); document.removeEventListener("keydown", this._clavier); document.removeEventListener("keyup", this._clavier); if (this._rafL) cancelAnimationFrame(this._rafL); if (this._ro) this._ro.disconnect(); if (this._io) this._io.disconnect(); if (this._io2) this._io2.disconnect(); if (this.finRendu) this.finRendu(); }
+  detruire() { this.memoPosition(); this.enregistrerVue(); document.removeEventListener("keydown", this._clavierD); document.removeEventListener("keydown", this._clavier); document.removeEventListener("keyup", this._clavier); if (this._rafL) cancelAnimationFrame(this._rafL); if (this._ro) this._ro.disconnect(); if (this._io) this._io.disconnect(); if (this._io2) this._io2.disconnect(); if (this.finRendu) this.finRendu(); }
 
   /* ----- barre d'outils */
   dessinerOutils() {
@@ -1564,7 +1614,7 @@ class EditeurCahier {
   redimensionnerBientot() {
     clearTimeout(this._rz);
     this._rz = setTimeout(() => {
-      if (this.geste || this.pince || this.acGeste || (this.actif && Date.now() - this.actif < 250 && this._place)) return this.redimensionnerBientot();
+      if (this.geste || this.pince || this.acGeste || this.selGeste || (this.actif && Date.now() - this.actif < 250 && this._place)) return this.redimensionnerBientot();
       this.redimensionner();
     }, 120);
   }
@@ -1606,7 +1656,7 @@ class EditeurCahier {
   peindre(pid) {
     const f = this.feuilles.get(pid);
     if (!f) return;
-    if (f.canevas) { this.peindreCanevas(f); this.majPostits(f); this.majAutocollants(f); return; }
+    if (f.canevas) { this.peindreCanevas(f); this.majPostits(f); this.majAutocollants(f); this.majPoigneeSel(f); return; }
     if (!f.alloue || f.aDessiner) this.allouer(f);
     f.aDessiner = false;
     const W = f.k * PAGE_L, H = f.page.h * f.k;
@@ -1614,6 +1664,7 @@ class EditeurCahier {
     dessinerPage(f.ctx, f.page, f.k, this.pc(), this.sel && this.sel.page === f.page ? this.sel : null);
     this.majPostits(f);
     this.majAutocollants(f);
+    this.majPoigneeSel(f);
   }
   majNumero() {
     const z = this.pagesZone.getBoundingClientRect();
@@ -1730,7 +1781,7 @@ class EditeurCahier {
     if (f.canevas) this.installerCanevas(f);
   }
   appui(f, e) {
-    if (this.acChoisi) { this.acChoisi = null; for (const x of this.feuilles.values()) this.majAutocollants(x); }
+    if (this.acChoisi) this.choisirAc(null);
     if (f.canevas && this.debutCanevas(f, e)) return;
     if (e.pointerType === "touch" && !this.doigt) return;
     if (this.outil === "main") return;
@@ -1858,7 +1909,7 @@ class EditeurCahier {
 
   /* ----- lasso */
   selectionner(f, poly) {
-    const p = f.page, traits = new Set(), textes = new Set();
+    const p = f.page, traits = new Set(), textes = new Set(), acs = new Set();
     if (poly.length >= 6) {
       for (const tr of p.traits) {
         let dedans = 0, n = 0;
@@ -1866,36 +1917,96 @@ class EditeurCahier {
         if (n && dedans / n >= .5) traits.add(tr);
       }
       for (const tx of p.textes || []) if (dansPoly(tx.x + 10, tx.y + 10, poly)) textes.add(tx);
+      for (const a of autocollantsNote(this.n)) if (a.p === p.id && dansPoly(a.x, a.y, poly)) acs.add(a);
     }
-    if (!traits.size && !textes.size) { this.deselect(); this.peindre(p.id); return; }
-    this.sel = {page: p, traits, textes, boite: null};
+    if (!traits.size && !textes.size && !acs.size) { this.deselect(); this.peindre(p.id); return; }
+    if (this.acChoisi) this.choisirAc(null);
+    this.sel = {page: p, traits, textes, acs, boite: null};
     this.majBoite();
     this.peindre(p.id);
     const b = this.barreSel; b.innerHTML = ""; b.hidden = false;
     const groupe = (nom, ...bs) => el("span.sel-groupe", null, el("span.petit.muted", {texte: nom}), ...bs);
     const pb = (t, titre, f) => { const x = petit(t, f); x.title = titre; x.setAttribute("aria-label", titre); return x; };
-    b.append(el("span.petit.sel-nb", {texte: `${traits.size + textes.size} élément${traits.size + textes.size > 1 ? "s" : ""}`}),
+    const nb = traits.size + textes.size + acs.size;
+    b.append(el("span.petit.sel-nb", {texte: `${nb} élément${nb > 1 ? "s" : ""}`}),
       groupe("Taille", pb("−", "Réduire la sélection", () => this.echelleSel(1 / 1.2)), pb("+", "Agrandir la sélection", () => this.echelleSel(1.2))),
       textes.size ? groupe("Texte", pb("A−", "Texte plus petit", () => this.texteSel(1 / 1.15)), pb("A+", "Texte plus grand", () => this.texteSel(1.15))) : null,
       traits.size ? groupe("Trait", pb("−", "Traits plus fins", () => this.traitSel(1 / 1.25)), pb("+", "Traits plus épais", () => this.traitSel(1.25))) : null,
       pb("Couleur", "Mettre la couleur actuelle", () => this.recolorer()), pb("Dupliquer", "Dupliquer", () => this.dupliquerSel()),
       cls(pb("Supprimer", "Supprimer", () => this.supprimerSel()), "danger"),
       el("button.bs-x.sel-x", {type: "button", title: "Fermer", "aria-label": "Tout désélectionner", texte: "✕", onclick: () => { this.deselect(); this.peindre(p.id); }}));
+    this.eviterBarre();
   }
   majBoite() {
     let a = 1e9, b = 1e9, c = -1e9, d = -1e9;
     for (const tr of this.sel.traits) { const q = boiteTrait(tr), m = (tr.e || 3) / 2; a = Math.min(a, q[0] - m); b = Math.min(b, q[1] - m); c = Math.max(c, q[2] + m); d = Math.max(d, q[3] + m); }
     for (const tx of this.sel.textes) { a = Math.min(a, tx.x); b = Math.min(b, tx.y); c = Math.max(c, tx.x + (tx.w || 420)); d = Math.max(d, tx.y + hauteurTexte(tx)); }
+    for (const x of this.sel.acs || []) { const m = (x.t || AC_TAILLE) / 2; a = Math.min(a, x.x - m); b = Math.min(b, x.y - m); c = Math.max(c, x.x + m); d = Math.max(d, x.y + m); }
     this.sel.boite = [a, b, c, d];
   }
   /* actions sur la sélection : tout est annulable (snap), la barre ne bouge pas */
   echelleSel(fac) {
     const s = this.sel; if (!s) return;
     this.snap(s.page);
-    const b = s.boite, cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2, r = (v) => Math.round(v * 10) / 10;
-    for (const tr of s.traits) { for (let i = 0; i < tr.p.length; i += 3) { tr.p[i] = r(cx + (tr.p[i] - cx) * fac); tr.p[i + 1] = r(cy + (tr.p[i + 1] - cy) * fac); } tr.e = Math.round(Math.max(.3, Math.min(80, (tr.e || 3) * fac)) * 100) / 100; }
-    for (const tx of s.textes) { tx.x = r(cx + (tx.x - cx) * fac); tx.y = r(cy + (tx.y - cy) * fac); tx.w = r(Math.max(40, (tx.w || 420) * fac)); tx.s = Math.round(Math.max(8, Math.min(200, (tx.s || 28) * fac))); }
+    const o = this.origineSel();
+    this.appliquerEchelle(o, fac);
     this.majBoite(); this.peindre(s.page.id); this.modifie();
+  }
+  /* état de départ de la sélection (pour une mise à l'échelle sans erreur cumulée pendant le glisser de la poignée) */
+  origineSel() {
+    const s = this.sel, b = s.boite;
+    return {cx: (b[0] + b[2]) / 2, cy: (b[1] + b[3]) / 2,
+      traits: [...s.traits].map(tr => ({tr, p: tr.p.slice(), e: tr.e || 3})), textes: [...s.textes].map(tx => ({tx, x: tx.x, y: tx.y, w: tx.w || 420, s: tx.s || 28})),
+      acs: [...(s.acs || [])].map(a => ({a, x: a.x, y: a.y, t: a.t || AC_TAILLE}))};
+  }
+  /* agrandir / réduire autour du centre : traits (et épaisseurs), textes, autocollants ; même calcul que le PC (echelle_depuis) */
+  appliquerEchelle(o, fac) {
+    const r = (v) => Math.round(v * 10) / 10, cx = o.cx, cy = o.cy;
+    for (const {tr, p, e} of o.traits) { for (let i = 0; i < p.length; i += 3) { tr.p[i] = r(cx + (p[i] - cx) * fac); tr.p[i + 1] = r(cy + (p[i + 1] - cy) * fac); } tr.e = Math.round(Math.max(.3, Math.min(80, e * fac)) * 100) / 100; }
+    for (const q of o.textes) { q.tx.x = r(cx + (q.x - cx) * fac); q.tx.y = r(cy + (q.y - cy) * fac); q.tx.w = r(Math.max(40, q.w * fac)); q.tx.s = Math.round(Math.max(8, Math.min(200, q.s * fac))); }
+    for (const q of o.acs) { q.a.x = r(cx + (q.x - cx) * fac); q.a.y = r(cy + (q.y - cy) * fac); q.a.t = Math.round(Math.max(AC_MIN, Math.min(AC_MAX, q.t * fac))); }
+  }
+  /* poignée de redimensionnement de la sélection (coin bas-droit du cadre) : même flèche que celle d'un autocollant ;
+     un glisser = une seule étape d'annulation */
+  majPoigneeSel(f) {
+    let h = f.selPoignee;
+    if (!this.sel || this.sel.page !== f.page || !this.sel.boite) { if (h) h.hidden = true; return; }
+    if (!h) {
+      h = f.selPoignee = el("button.sel-poignee", {type: "button", title: "Glisser pour agrandir ou réduire la sélection", "aria-label": "Redimensionner la sélection"});
+      f.div.append(h);
+      let g = null;
+      h.addEventListener("pointerdown", (e) => {
+        if (!this.sel) return;
+        e.preventDefault(); e.stopPropagation();
+        try { h.setPointerCapture(e.pointerId); } catch (er) { /* */ }
+        const r = f.cv.getBoundingClientRect(), o = this.origineSel();
+        const sx = r.left + (f.ox || 0) + o.cx * f.k, sy = r.top + (f.oy || 0) + o.cy * f.k;
+        this.snap(this.sel.page);
+        g = {id: e.pointerId, o, sx, sy, d0: Math.max(8, Math.hypot(e.clientX - sx, e.clientY - sy)), fac: 1, snap: this.histo.length};
+        this.selGeste = g;
+      });
+      h.addEventListener("pointermove", (e) => {
+        if (!g || g.id !== e.pointerId) return;
+        e.preventDefault();
+        g.fac = Math.max(.1, Math.min(10, Math.hypot(e.clientX - g.sx, e.clientY - g.sy) / g.d0));
+        if (this._rafSel) return;
+        this._rafSel = requestAnimationFrame(() => { this._rafSel = 0; if (!g || !this.sel) return; this.appliquerEchelle(g.o, g.fac); this.majBoite(); this.peindre(f.page.id); });
+      });
+      const fin = (e) => {
+        if (!g || g.id !== e.pointerId) return;
+        const gg = g; g = null; this.selGeste = null;
+        cancelAnimationFrame(this._rafSel); this._rafSel = 0;
+        try { h.releasePointerCapture(e.pointerId); } catch (er) { /* */ }
+        if (!this.sel) return;
+        if (Math.abs(gg.fac - 1) < .005) { if (this.histo.length === gg.snap) this.histo.pop(); this.appliquerEchelle(gg.o, 1); }
+        else { this.appliquerEchelle(gg.o, gg.fac); this.modifie(); }
+        this.majBoite(); this.peindre(f.page.id); this.eviterBarre();
+      };
+      h.addEventListener("pointerup", fin); h.addEventListener("pointercancel", fin); h.addEventListener("lostpointercapture", fin);
+    }
+    const b = this.sel.boite;
+    h.style.left = ((b[2]) * f.k + (f.ox || 0) + 6) + "px"; h.style.top = ((b[3]) * f.k + (f.oy || 0) + 6) + "px";
+    h.hidden = false;
   }
   texteSel(fac) {
     const s = this.sel; if (!s || !s.textes.size) return;
@@ -1913,6 +2024,7 @@ class EditeurCahier {
   deplacerSel(dx, dy) {
     for (const tr of this.sel.traits) for (let i = 0; i < tr.p.length; i += 3) { tr.p[i] = Math.round((tr.p[i] + dx) * 10) / 10; tr.p[i + 1] = Math.round((tr.p[i + 1] + dy) * 10) / 10; }
     for (const tx of this.sel.textes) { tx.x += dx; tx.y += dy; }
+    for (const a of this.sel.acs || []) { a.x = Math.round((a.x + dx) * 10) / 10; a.y = Math.round((a.y + dy) * 10) / 10; }
     this.majBoite();
   }
   recolorer() {
@@ -1927,8 +2039,10 @@ class EditeurCahier {
     this.snap(p);
     const tr2 = [...s.traits].map(t => { const c = clone(t); for (let i = 0; i < c.p.length; i += 3) { c.p[i] += 30; c.p[i + 1] += 30; } return c; });
     const tx2 = [...s.textes].map(t => Object.assign(clone(t), {id: newId(), x: t.x + 30, y: t.y + 30}));
+    const ac2 = [...(s.acs || [])].map(a => copieAutocollant(a, 30));
     p.traits.push(...tr2); p.textes = (p.textes || []).concat(tx2);
-    this.sel = {page: p, traits: new Set(tr2), textes: new Set(tx2), boite: null};
+    if (ac2.length) { if (!Array.isArray(this.n.autocollants)) this.n.autocollants = []; this.n.autocollants.push(...ac2); }
+    this.sel = {page: p, traits: new Set(tr2), textes: new Set(tx2), acs: new Set(ac2), boite: null};
     this.majBoite(); this.peindre(p.id); this.modifie();
   }
   supprimerSel() {
@@ -1936,9 +2050,10 @@ class EditeurCahier {
     this.snap(p);
     p.traits = p.traits.filter(t => !s.traits.has(t));
     p.textes = (p.textes || []).filter(t => !s.textes.has(t));
+    if (s.acs && s.acs.size) this.n.autocollants = (this.n.autocollants || []).filter(a => !s.acs.has(a));
     this.deselect(); this.peindre(p.id); this.modifie();
   }
-  deselect() { const had = this.sel; this.sel = null; this.barreSel.hidden = true; if (had) this.peindre(had.page.id); }
+  deselect() { const had = this.sel; this.sel = null; this.barreSel.hidden = true; if (had) this.peindre(had.page.id); for (const f of this.feuilles.values()) if (f.selPoignee) f.selPoignee.hidden = true; }
 
   /* ----- zones de texte */
   /* ----- pointeur laser (« baguette magique ») : traînée lisse qui s'estompe toute seule ; rien n'est enregistré ni synchronisé */
@@ -2047,9 +2162,34 @@ class EditeurCahier {
     if (!f.canevas) { x = Math.max(m, Math.min(PAGE_L - m, x)); y = Math.max(m, Math.min(p.h - m, y)); }
     if (!Array.isArray(this.n.autocollants)) this.n.autocollants = [];
     const a = {id: newId(), s, p: p.id, x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, t: AC_TAILLE};
+    this.snap(p);
     this.n.autocollants.push(a);
-    this.acChoisi = a.id;
-    this.majAutocollants(f); this.modifie(); Geos.maj(this.pn.app);
+    this.choisirAc(a.id); this.modifie(); Geos.maj(this.pn.app);
+  }
+  /* autocollant choisi (v30/v28) : cadre, ✕, poignée de taille et barre flottante (Dupliquer, Retirer) ; null = aucun */
+  choisirAc(id) {
+    if (id && this.sel) this.deselect();
+    this.acChoisi = id;
+    for (const x of this.feuilles.values()) this.majAutocollants(x);
+    if (!id) { if (!this.sel) this.barreSel.hidden = true; return; }
+    remplirBarreAc(this.barreSel, {dupliquer: () => this.dupliquerAc(), fermer: () => this.choisirAc(null),
+      retirer: () => { const a = (this.n.autocollants || []).find(x => x.id === this.acChoisi), f = a && this.feuilles.get(a.p); if (f) this.rappelsAc(f).retirer(a); }});
+    this.eviterBarre();
+  }
+  /* la barre flottante ne cache ni l'autocollant choisi ni la poignée de la sélection */
+  eviterBarre() {
+    const el = [];
+    for (const f of this.feuilles.values()) { if (this.acChoisi && f.acZones && f.acZones.get(this.acChoisi)) el.push(f.acZones.get(this.acChoisi)); if (f.selPoignee && !f.selPoignee.hidden) el.push(f.selPoignee); }
+    eviterRecouvrement(this.barreSel, el);
+  }
+  /* dupliquer l'autocollant choisi : copie décalée de 20, même image et même taille, nouvel id ; elle devient l'autocollant choisi */
+  dupliquerAc() {
+    const a = (this.n.autocollants || []).find(x => x.id === this.acChoisi), f = a && this.feuilles.get(a.p);
+    if (!f) return;
+    this.snap(f.page);
+    const c = copieAutocollant(a, 20, f.canevas ? null : [PAGE_L, f.page.h]);
+    this.n.autocollants.push(c);
+    this.choisirAc(c.id); this.modifie();
   }
   majAutocollants(f) {
     const liste = autocollantsNote(this.n).filter(a => a.p === f.page.id);
@@ -2066,7 +2206,7 @@ class EditeurCahier {
   }
   rappelsAc(f) {
     return {
-      debut: (g) => { this.acGeste = g; },
+      debut: (g) => { this.acGeste = g; this.snap(f.page); g.snap = this.histo.length; },
       bouge: (a, g, dx, dy) => {
         let x = g.x0 + dx / f.k, y = g.y0 + dy / f.k;
         if (!f.canevas) { const m = a.t / 2; x = Math.max(m, Math.min(PAGE_L - m, x)); y = Math.max(m, Math.min(f.page.h - m, y)); }
@@ -2082,11 +2222,13 @@ class EditeurCahier {
         this.acGeste = null;
         if (g.deplace && annule) { a.x = g.x0; a.y = g.y0; }
         if (g.deplace && !annule) this.modifie();
+        if (g.deplace) requestAnimationFrame(() => this.eviterBarre());
+        if ((!g.deplace || annule) && this.histo.length === g.snap) this.histo.pop();      // rien n'a changé : pas d'étape d'annulation
         if (g.taille) { this.majAutocollants(f); return; }
-        if (!g.deplace) { const choisi = this.acChoisi === a.id ? null : a.id; this.acChoisi = choisi; for (const x of this.feuilles.values()) this.majAutocollants(x); }
+        if (!g.deplace) { this.choisirAc(this.acChoisi === a.id ? null : a.id); return; }
         this.majAutocollants(f);
       },
-      retirer: (a) => { this.n.autocollants = (this.n.autocollants || []).filter(x => x.id !== a.id); this.acChoisi = null; this.majAutocollants(f); this.modifie(); Geos.maj(this.pn.app); },
+      retirer: (a) => { this.snap(f.page); this.n.autocollants = (this.n.autocollants || []).filter(x => x.id !== a.id); this.choisirAc(null); this.modifie(); Geos.maj(this.pn.app); },
     };
   }
 
@@ -2175,7 +2317,8 @@ class EditeurCahier {
   }
 
   /* ----- annuler / rétablir (par page) */
-  snap(p) { this.editees.add(p.id); this.histo.push({p, traits: clone(p.traits), textes: clone(p.textes || [])}); if (this.histo.length > 60) this.histo.shift(); this.refait = []; }
+  /* une étape d'annulation = la page (traits, textes) + les autocollants de la note (v30/v28) */
+  snap(p) { this.editees.add(p.id); this.histo.push({p, traits: clone(p.traits), textes: clone(p.textes || []), ac: clone(this.n.autocollants || [])}); if (this.histo.length > 60) this.histo.shift(); this.refait = []; }
   /* une page que l'utilisateur a lui-même vidée reçoit un marqueur : sans lui, une page vide n'est jamais envoyée par-dessus un contenu */
   majVides() {
     for (const p of this.n.pages) {
@@ -2186,14 +2329,21 @@ class EditeurCahier {
   annuler() {
     const h = this.histo.pop(); if (!h) return;
     this.editees.add(h.p.id);
-    this.refait.push({p: h.p, traits: clone(h.p.traits), textes: clone(h.p.textes || [])});
-    h.p.traits = h.traits; h.p.textes = h.textes; this.deselect(); this.peindre(h.p.id); this.modifie();
+    this.refait.push({p: h.p, traits: clone(h.p.traits), textes: clone(h.p.textes || []), ac: clone(this.n.autocollants || [])});
+    this.restaurer(h);
   }
   refaire() {
     const h = this.refait.pop(); if (!h) return;
     this.editees.add(h.p.id);
-    this.histo.push({p: h.p, traits: clone(h.p.traits), textes: clone(h.p.textes || [])});
-    h.p.traits = h.traits; h.p.textes = h.textes; this.deselect(); this.peindre(h.p.id); this.modifie();
+    this.histo.push({p: h.p, traits: clone(h.p.traits), textes: clone(h.p.textes || []), ac: clone(this.n.autocollants || [])});
+    this.restaurer(h);
+  }
+  restaurer(h) {
+    h.p.traits = h.traits; h.p.textes = h.textes;
+    if (h.ac) this.n.autocollants = h.ac;
+    this.acChoisi = null; this.deselect(); this.peindre(h.p.id);
+    if (h.ac) for (const x of this.feuilles.values()) if (x.page !== h.p) this.majAutocollants(x);
+    this.modifie();
   }
 
   /* ----- pincer pour zoomer (deux doigts) */
@@ -2278,7 +2428,7 @@ class EditeurCahier {
   majMiniatures() {
     clearTimeout(this._jm);
     if (!this.miniatures) return;
-    if (this.geste || this.pince || (this.actif && Date.now() - this.actif < 700)) { this._jm = setTimeout(() => this.majMiniatures(), 400); return; }
+    if (this.geste || this.pince || this.selGeste || this.acGeste || (this.actif && Date.now() - this.actif < 700)) { this._jm = setTimeout(() => this.majMiniatures(), 400); return; }
     for (const b of this.mini.querySelectorAll(".mini[data-p]")) {
       const p = this.n.pages.find(x => x.id === b.dataset.p), c = b.querySelector("canvas");
       if (p && c && this.editees.has(p.id)) c.replaceWith(canvasPage(p, this.n.papier, 110));

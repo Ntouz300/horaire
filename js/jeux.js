@@ -378,6 +378,34 @@ function boutonOutilAutocollants(action) {
   return el("button.cah-outil.cah-outil-ac", {type: "button", title: "Autocollants", "aria-label": "Autocollants", onclick: action}, imgSprite("etoile", 2, ".cah-ac-img"));
 }
 
+/* copie d'un autocollant posé (v30/v28) : même image « s », même taille « t », même page, nouvel id, décalée de « d » ; n'achète rien */
+function copieAutocollant(a, d, borne) {
+  const c = Object.assign({}, a, {id: newId(), x: Math.round((a.x + d) * 10) / 10, y: Math.round((a.y + d) * 10) / 10});
+  if (borne) { const m = (c.t || AC_TAILLE) / 2; c.x = Math.max(m, Math.min(borne[0] - m, c.x)); c.y = Math.max(m, Math.min(borne[1] - m, c.y)); }
+  return c;
+}
+/* une barre flottante ne cache jamais ce qu'on manipule : si elle recouvre un des éléments donnés (autocollant choisi, poignée),
+   elle passe en haut de la zone (classe « en-haut ») ; sinon elle reste en bas. Même règle sur le PC (barre_eviter). */
+function eviterRecouvrement(barre, elems) {
+  barre.classList.remove("en-haut");
+  if (barre.hidden) return;
+  const b = barre.getBoundingClientRect(), m = 16;
+  for (const e of elems) {
+    if (!e || e.hidden || !e.isConnected) continue;
+    const r = e.getBoundingClientRect();
+    if (r.right + m > b.left && r.left - m < b.right && r.bottom + m > b.top && r.top - m < b.bottom) { barre.classList.add("en-haut"); return; }
+  }
+}
+/* barre flottante d'un autocollant choisi : Dupliquer, Retirer, fermer (mêmes boutons sur le PC) */
+function remplirBarreAc(b, actions) {
+  b.innerHTML = "";
+  const pb = (t, titre, f, style) => { const x = petit(t, f, style || "ghost"); x.title = titre; x.setAttribute("aria-label", titre); return x; };
+  b.append(el("span.petit.sel-nb", {texte: "Autocollant"}),
+    pb("Dupliquer", "Dupliquer l'autocollant (Ctrl+D)", actions.dupliquer),
+    pb("Retirer", "Retirer de la note (il reste dans l'inventaire)", actions.retirer, "danger"),
+    el("button.bs-x.sel-x", {type: "button", title: "Fermer", "aria-label": "Désélectionner l'autocollant", texte: "✕", onclick: actions.fermer}));
+  b.hidden = false;
+}
 /* ---------- autocollants posés sur une note : {id, s, p (id de page ; "" pour une note texte), x, y, t} */
 function normaliserAutocollant(a) {
   if (!a || typeof a !== "object" || typeof a.s !== "string") return null;

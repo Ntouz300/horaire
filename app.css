@@ -1688,11 +1688,11 @@ body.tel .carte-modale.boutique .bq-grille { grid-template-columns: repeat(2, mi
 .cahier .cah-options .espace { flex: 1 0 6px; }
 
 /* v27 — autocollants : ✕ et poignée de taille (cibles de 44 px, pastille visible de 26 px), boutique (doublons revendables) */
-.ac-zone .ac-x, .ac-zone .ac-taille { width: 44px; height: 44px; padding: 0; border: 0; color: #fff; font-weight: 700; line-height: 44px; text-align: center; cursor: pointer; touch-action: none; }
+.ac-zone .ac-x, .ac-zone .ac-taille, .sel-poignee { width: 44px; height: 44px; padding: 0; border: 0; color: #fff; font-weight: 700; line-height: 44px; text-align: center; cursor: pointer; touch-action: none; }
 .ac-zone .ac-x { right: -22px; top: -22px; background: radial-gradient(circle, var(--danger) 0 12.5px, rgba(0, 0, 0, .25) 13px, transparent 14px); box-shadow: none; }
 .ac-zone .ac-taille { display: none; position: absolute; right: -22px; bottom: -22px; z-index: 2; cursor: nwse-resize;
   background: radial-gradient(circle, var(--accent) 0 12.5px, rgba(0, 0, 0, .25) 13px, transparent 14px); }
-.ac-zone .ac-taille::before { content: ""; position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; transform: translate(-50%, -50%);
+.ac-zone .ac-taille::before, .sel-poignee::before { content: ""; position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; transform: translate(-50%, -50%);
   border-right: 2.5px solid #fff; border-bottom: 2.5px solid #fff; }
 .ac-zone.choisi .ac-taille { display: block; }
 .bq-art.possede { border-color: color-mix(in srgb, var(--ok, #3fbf5a) 40%, var(--rule)); }
@@ -1715,3 +1715,16 @@ body.tel .carte-modale.boutique .bq-grille { grid-template-columns: repeat(2, mi
 .sel-groupe > .muted { margin-right: 2px; }
 .sel-nb { padding: 0 4px; }
 .sel-x { min-width: 44px; min-height: 44px; border: 0; background: transparent; border-radius: 50%; }
+
+/* v28 — poignée de la sélection au lasso (même flèche que l'autocollant), barre flottante de l'autocollant choisi (note texte) */
+.sel-poignee { position: absolute; z-index: 4; transform: translate(-50%, -50%); cursor: nwse-resize; touch-action: none;
+  background: radial-gradient(circle, var(--accent) 0 12.5px, rgba(0, 0, 0, .25) 13px, transparent 14px); }
+.sel-poignee[hidden] { display: none; }
+.doc-vue { position: relative; }
+.nt-sel { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 24px); flex-wrap: wrap; justify-content: center; }
+.nt-sel > * { flex: none; }
+.nt-outils .cah-outil { width: 44px; height: 44px; flex: none; }
+.ac-zone.choisi { z-index: 5; }           /* l'autocollant choisi (et sa poignée, sa croix) passe au-dessus de ses copies */
+.cah-sel.en-haut { bottom: auto; top: 14px; }      /* la barre ne cache pas l'autocollant choisi ni la poignée */
+.nt-sel.pres { bottom: auto; }                     /* note texte : placée juste sous (ou sur) l'autocollant choisi, sans le cacher */
+body.tel .nt-sel .sel-nb { display: none; }         /* téléphone : une seule ligne (Dupliquer, Retirer, ✕) */
