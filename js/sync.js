@@ -44,7 +44,7 @@ class Synchro {
   /* section jamais envoyée ni reçue ici : géos désynchronisés, note non synchronisée */
   exclue(nom) {
     if (nom.startsWith("gx_")) return this.reg("fb_geos_local");
-    if (nom.startsWith("n_") || nom.startsWith("np_")) return noteLocale(this.app.reglages, nom.startsWith("n_") ? nom.slice(2) : nom.split("_")[1]);
+    if (nom.startsWith("n_") || nom.startsWith("np_")) return noteHorsSync(this.app, nom.startsWith("n_") ? nom.slice(2) : nom.split("_")[1]);
     return false;
   }
   /* compteur de géos gardé pour plus tard : partie de mini-jeu en cours, ou écriture regroupée (45 s) */
@@ -265,7 +265,9 @@ class Synchro {
       poserSection(d, nom, v);
       if (v === null) delete this.cfg.base[nom]; else this.cfg.base[nom] = canon(v);
     }
+    if (typeof Creations !== "undefined") Creations.integrer(d);              // autocollant créé sur un autre appareil
     this.app.apresDistant(new Set(Object.keys(sections)));
+    if (typeof PackAC !== "undefined" && PackAC.besoin(d)) PackAC.charger();   // un autocollant du paquet arrive d'un autre appareil
   }
 
   appliquerAttente() {

@@ -58,7 +58,368 @@ function spriteGeo() {
   return nom;
 }
 function imgGeo(k = 2, classe = "") { const i = imgSprite(spriteGeo(), k, ".geo-ico" + classe); i.dataset.k = String(k); return i; }
-function nomAutocollant(s) { const a = JX.autocollants.find(x => x[0] === s); return a ? a[1] : s; }
+function nomAutocollant(s) { if (typeof Creations !== "undefined" && Creations.info[s]) return Creations.info[s].n; const a = JX.autocollants.find(x => x[0] === s); return a ? a[1] : s; }
+
+/* ---------- paquet d'autocollants (v31/v29) : 850 autocollants de plus dans un fichier séparé (js/pack_ac.json, ≈ 190 Ko,
+   ≈ 35 Ko compressé), chargé à la demande : boutique, inventaire, mini-jeux, ou note qui en contient un.
+   Mêmes données que le PC (PACK_AC_Z, décodé par charger_pack). Format : {g: [[thème, rangée, rareté, [[id, nom, prix, sprite], …]], …],
+   themes: {rangée d'un ancien autocollant: thème}} ; sprite au format compact « palette;largeur:pixels ». */
+const PackAC = {
+  pret: false, promesse: null, info: {}, themes: {},
+  url() {
+    const sc = document.querySelector('script[src*="jeux.js"]'), m = sc && /[?&]v=(\d+)/.exec(sc.getAttribute("src"));
+    return "js/pack_ac.json" + (m ? "?v=" + m[1] : "");
+  },
+  /* ajoute le paquet aux autocollants (une seule fois) ; même ordre et mêmes valeurs que integrer_pack (PC) */
+  integrer(P) {
+    if (this.pret) return;
+    this.themes = P.themes || {};
+    for (const [theme, rangee, rar, l] of P.g || []) {
+      for (const [id, nom, prix, sp] of l) {
+        if (SPRITES[id]) continue;
+        SPRITES[id] = deplierSprite(sp, JX.ps);
+        JX.autocollants.push([id, nom, prix, rangee]);
+        if (rar !== "commun") JX.effets[id] = rar === "tres_rare" ? "scintille" : "brille";
+        this.info[id] = [theme, rar];
+      }
+    }
+    this.pret = true;
+  },
+  charger() {
+    if (this.pret) return Promise.resolve(true);
+    if (!this.promesse) {
+      this.promesse = fetch(this.url()).then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(P => { this.integrer(P); rafraichirAutocollants(); return true; })
+        .catch(e => { this.promesse = null; try { Stock.journal("pack d'autocollants", e); } catch (er) { /* */ } return false; });
+    }
+    return this.promesse;
+  },
+  /* des données font référence à un autocollant du paquet (note, inventaire) : il faut le charger tout de suite */
+  besoin(d) {
+    if (this.pret || !d) return false;
+    for (const n of d.notes || []) for (const a of n.autocollants || []) if (a && typeof a.s === "string" && !SPRITES[a.s] && a.s.startsWith("p_")) return true;
+    for (const e of Object.values(d.geos || {})) for (const k of Object.keys((e && e.a) || {})) if (k.startsWith("p_") && !SPRITES[k]) return true;
+    return false;
+  },
+};
+/* paquet arrivé : les autocollants déjà posés dans la note ouverte apparaissent, compteurs et fenêtres ouvertes à jour */
+function rafraichirAutocollants() {
+  const app = window.app;
+  if (!app || !app.ecrans) return;
+  const ed = app.ecrans.notes && app.ecrans.notes.ed;
+  if (ed && ed.feuilles) { for (const f of ed.feuilles.values()) if (f.div) ed.majAutocollants(f); }
+  else if (ed && ed.majAutocollants) ed.majAutocollants();
+  document.dispatchEvent(new CustomEvent("pack-ac"));
+}
+/* ---------- jour et semaine à Toronto (v31/v29) : règles de l'heure avancée écrites à la main (2ᵉ dimanche de mars 2 h →
+   1er dimanche de novembre 2 h), sans dépendre du fuseau de l'appareil ; même calcul que jour_toronto (PC) */
+function maintenantMs() { return Date.now(); }
+function decalageToronto(ms) {
+  const y = new Date(ms).getUTCFullYear();
+  const dim = (m, n) => { const j1 = new Date(Date.UTC(y, m, 1)).getUTCDay(); return 1 + (7 - j1) % 7 + 7 * (n - 1); };
+  return ms >= Date.UTC(y, 2, dim(2, 2), 7) && ms < Date.UTC(y, 10, dim(10, 1), 6) ? -240 : -300;
+}
+function jourToronto(ms) { if (ms === undefined) ms = maintenantMs(); return new Date(ms + decalageToronto(ms) * 60000).toISOString().slice(0, 10); }
+/* instant (ms) du prochain minuit à Toronto */
+function finJourToronto(ms) {
+  if (ms === undefined) ms = maintenantMs();
+  const [y, m, d] = jourToronto(ms).split("-").map(Number), u = Date.UTC(y, m - 1, d + 1);
+  return u - decalageToronto(u + 5 * 3600000) * 60000;
+}
+function decalerJour(jour, n) { const [y, m, d] = jour.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); }
+function lundiToronto(jour) { const [y, m, d] = jour.split("-").map(Number); return decalerJour(jour, -((new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7)); }
+/* « 5 h 12 min », « 12 min », « moins d'une minute » */
+function dureeTexte(ms) {
+  const mn = Math.floor(Math.max(0, ms) / 60000), h = Math.floor(mn / 60), r = mn % 60;
+  return h ? `${h} h ${String(r).padStart(2, "0")} min` : mn ? `${mn} min` : "moins d'une minute";
+}
+/* hasard reproductible (même suite sur le PC) : graine FNV-1a 32 bits, générateur mulberry32 */
+function hacheFnv(s) { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h >>> 0; }
+class AleaFixe {
+  constructor(graine) { this.a = graine >>> 0; }
+  suivant() {
+    this.a = (this.a + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(this.a ^ (this.a >>> 15), 1 | this.a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return (t ^ (t >>> 14)) >>> 0;
+  }
+  entier(n) { return this.suivant() % n; }
+  melanger(l) { l = l.slice(); for (let i = l.length - 1; i > 0; i--) { const j = this.entier(i + 1); const x = l[i]; l[i] = l[j]; l[j] = x; } return l; }
+}
+/* thèmes, dans un ordre fixe (même liste sur le PC) */
+const THEMES_AC = ["Classiques", "Hollow Knight", "Style Rocket League", "Style Elden Ring", "Animaux", "Sport", "Espace", "Nourriture",
+  "Musique et loisirs", "Météo et saisons", "Trésors"];
+function prixRabais(prix, pct) { return Math.max(1, Math.floor((prix * (100 - pct) + 50) / 100)); }
+/* boutique du jour (v31/v29) : 50 autocollants différents tirés à partir de la date de Toronto (identique sur tous les appareils) :
+   3 à 6 rares (rares ou très rares), au moins 6 du thème de la semaine (s'il y en a), le reste en communs.
+   Rabais du jour : 10 à 60 % (pas de 5) sur 1 à 5 articles ; rabais de la semaine : 30 à 65 % sur le thème de la semaine.
+   Pas de cumul : le meilleur des deux rabais s'applique. Même calcul que boutique_du_jour (PC). */
+function boutiqueDuJour(jour) {
+  const r = new AleaFixe(hacheFnv("boutique|" + jour)), sem = lundiToronto(jour), rs = new AleaFixe(hacheFnv("semaine|" + sem));
+  const themeS = THEMES_AC[rs.entier(THEMES_AC.length)], pctS = 30 + 5 * rs.entier(8);
+  const cat = JX.autocollants;
+  const rares = r.melanger(cat.filter(a => rareteAc(a[0]) !== "commun")), communs = r.melanger(cat.filter(a => rareteAc(a[0]) === "commun"));
+  const choix = rares.slice(0, 3 + r.entier(4)), pris = new Set(choix.map(a => a[0]));
+  let nTh = choix.filter(a => themeAc(a[0]) === themeS).length;
+  for (const a of communs) { if (nTh >= 6) break; if (themeAc(a[0]) === themeS && !pris.has(a[0])) { choix.push(a); pris.add(a[0]); nTh++; } }
+  for (const a of communs) { if (choix.length >= 50) break; if (!pris.has(a[0])) { choix.push(a); pris.add(a[0]); } }
+  const pctJ = 10 + 5 * r.entier(11), nJ = Math.min(1 + r.entier(5), choix.length), soldes = new Set();
+  while (soldes.size < nJ) soldes.add(r.entier(choix.length));
+  const articles = choix.map((a, i) => {
+    const pj = soldes.has(i) ? pctJ : 0, ps = themeAc(a[0]) === themeS ? pctS : 0, pct = Math.max(pj, ps);
+    return {s: a[0], nom: a[1], prix: a[2], rangee: a[3], pct, raison: pct ? (pj >= ps ? "jour" : "semaine") : "", final: prixRabais(a[2], pct),
+      rar: rareteAc(a[0]), theme: themeAc(a[0])};
+  });
+  return {jour, semaine: sem, themeSemaine: themeS, pctSemaine: pctS, pctJour: pctJ, nbJour: nJ, articles};
+}
+
+/* ---------- autocollants créés dans l'atelier des mini-jeux (v31/v29) : rangés dans le compte de géos de l'appareil qui les a créés
+   (gx_<appareil>.cr, que seul cet appareil modifie, synchronisé comme les géos) ; date (Toronto) du dernier créé : gx.cj.
+   Un par jour et par compte (toutes les cj, tous appareils) ; rareté tirée à la création (commun 50 %, rare 40 %, très rare 10 %),
+   prix tiré dans la fourchette de la rareté et gardé ; vente à la boutique le jour de création seulement (heure de Toronto). */
+const Creations = {
+  info: {},
+  /* rend visibles (dessins, effets) les autocollants créés présents dans les données */
+  integrer(d) {
+    for (const e of Object.values((d && d.geos) || {})) for (const [k, c] of Object.entries((e && e.cr) || {})) {
+      if (this.info[k]) continue;
+      this.info[k] = c;
+      SPRITES[k] = deplierSprite(c.sp, JX.ps);
+      if (c.rar !== "commun") JX.effets[k] = c.rar === "tres_rare" ? "scintille" : "brille";
+    }
+  },
+  /* date (Toronto) du dernier autocollant créé, tous appareils confondus ("" = jamais) */
+  dernierJour(d) { let j = ""; for (const e of Object.values((d && d.geos) || {})) if (e && e.cj && e.cj > j) j = e.cj; return j; },
+  peutCreer(d) { return this.dernierJour(d) < jourToronto(); },
+  /* rareté : r ∈ [0, 1[ -> très rare si r < 0,10, rare si r < 0,50, sinon commun (10 / 40 / 50 %) */
+  rarete(r) { return r < 0.10 ? "tres_rare" : r < 0.50 ? "rare" : "commun"; },
+  /* prix au pas de 10 dans la fourchette de la rareté, tiré une fois pour toutes */
+  prix(rar, r) { const [a, b] = CREATION_PRIX[rar]; return a + 10 * Math.floor(r * ((b - a) / 10 + 1)); },
+  creer(app, nom, sp) {
+    const d = app.donnees;
+    if (!this.peutCreer(d)) return null;
+    const rar = this.rarete(aleaReel()), prix = this.prix(rar, aleaReel()), id = "c_" + newId().replace(/[^A-Za-z0-9]/g, "").slice(0, 20);
+    const c = normaliserCreation(id, {n: nom || "Ma création", sp, rar, prix, j: jourToronto(), t: maintenantMs()});
+    if (!c) return null;
+    const e = Geos.compte(app);
+    e.cr = Object.assign({}, e.cr || {}, {[id]: c});
+    e.cj = c.j;
+    e.a[id] = (e.a[id] || 0) + 1;
+    this.integrer(d);
+    app.sauver();
+    if (app.sync) app.sync.localChange();               // la limite vaut pour le compte : les autres appareils la voient tout de suite
+    return Object.assign({id}, c);
+  },
+  /* temps restant pour vendre (ms) ; 0 = la vente est fermée */
+  resteVente(c) { return c && c.j === jourToronto() ? Math.max(0, finJourToronto() - maintenantMs()) : 0; },
+  /* vente à la boutique au prix gardé, le jour de création seulement ; renvoie les géos reçus (0 = refusé) */
+  vendre(app, id) {
+    const c = this.info[id];
+    if (!c || !this.resteVente(c) || (Geos.inventaire(app.donnees)[id] || 0) < 1) return 0;
+    const e = Geos.compte(app);
+    e.v[id] = (e.v[id] || 0) + 1;
+    return Geos.gagner(app, c.prix, false) || (app.sauver(), 0);
+  },
+};
+/* vendre un autocollant créé : jamais automatique, prix et rareté affichés, confirmation obligatoire ; répond les géos reçus (0 sinon) */
+async function confirmerVenteCreation(app, id) {
+  const c = Creations.info[id];
+  if (!c) return 0;
+  const reste = Creations.resteVente(c);
+  if (!reste) { Notifs.bulle("Vente fermée : un autocollant créé ne se vend que le jour de sa création."); return 0; }
+  const ok = await dialogue("Vendre « " + c.n + " » ?", `${RARETES[c.rar]} · ${fmtGeos(c.prix)} ${M("p")}.\nVente possible aujourd'hui seulement (encore ${dureeTexte(reste)}). ` +
+    "L'autocollant quitte ton inventaire (ceux déjà collés restent dans les notes).", [["Annuler", false, "ghost"], [`Vendre pour ${fmtGeos(c.prix)}`, true, "primary"]]);
+  if (ok !== true) return 0;
+  const g = Creations.vendre(app, id);
+  if (g) { SonJeux.jouer("achat"); Notifs.bulle(`« ${c.n} » vendu : +${fmtGeos(g)} ${M("p")}.`); }
+  else Notifs.bulle("Vente impossible (minuit est passé ou l'autocollant n'est plus dans l'inventaire).");
+  return g;
+}
+
+/* ---------- atelier : dessiner son autocollant (16 × 16 pixels, palette du jour : 8 couleurs ; outils : crayon, gros crayon,
+   remplir, gomme, annuler, tout effacer). Même atelier sur le PC (AtelierAcPC). */
+const AT_N = 16;
+class AtelierAc extends Modal {
+  constructor(app) {
+    super("Atelier d'autocollants", "Dessine ton autocollant avec la palette du jour. Un seul par jour pour tout ton compte (tous appareils).", {classe: "large"});
+    this.app = app; this.px = new Array(AT_N * AT_N).fill(-1); this.histo = []; this.outil = "crayon"; this.coul = 0; this.resultat = null;
+    this.carte.classList.add("atelier");
+    this.zone = el("div.at-zone");
+    this.carte.append(this.zone);
+    this.barre([bouton("Mon inventaire", () => { this.fermer(); new Inventaire(app).montrer(); }, "ghost")], [bouton("Fermer", () => this.fermer(), "primary")]);
+    this.minuterie = setInterval(() => this.majTemps(), 20000);
+    this.dessiner();
+  }
+  fermer() { clearInterval(this.minuterie); super.fermer(); }
+  majTemps() {
+    if (!this.carte.isConnected) { clearInterval(this.minuterie); return; }
+    if (this.jour && this.jour !== jourToronto()) { this.resultat = null; this.dessiner(); return; }
+    this.zone.querySelectorAll("[data-fin]").forEach(x => { x.textContent = x.dataset.av + dureeTexte(finJourToronto() - maintenantMs()); });
+  }
+  dessiner() {
+    const z = this.zone, d = this.app.donnees;
+    z.innerHTML = "";
+    this.jour = jourToronto();
+    if (this.resultat) return this.afficherResultat();
+    if (!Creations.peutCreer(d)) {
+      z.append(el("div.at-limite", null, el("b", {texte: "Tu as déjà créé ton autocollant aujourd'hui."}),
+        el("div.at-temps", {"data-fin": "1", "data-av": "Prochain autocollant dans ", texte: "Prochain autocollant dans " + dureeTexte(finJourToronto() - maintenantMs())}),
+        el("div.petit.muted", {texte: "La limite vaut pour ton compte : elle est la même sur tous tes appareils synchronisés."})));
+      const auj = Object.entries(Creations.info).filter(([, c]) => c.j === this.jour);
+      if (auj.length) { const g = el("div.bq-grille"); for (const [k] of auj) g.append(this.carteCreation(k)); z.append(etiquette("Créé aujourd'hui"), g); }
+      return;
+    }
+    const [nomPal, pal] = paletteDuJour(this.jour);
+    this.pal = pal;
+    const outils = el("div.at-outils");
+    for (const [v, t] of [["crayon", "Crayon"], ["gros", "Gros crayon"], ["remplir", "Remplir"], ["gomme", "Gomme"]]) {
+      const b = petit(t, () => { this.outil = v; outils.querySelectorAll("button[data-o]").forEach(x => x.className = x.className.replace(/\b(tab_on|ghost)\b/, x.dataset.o === v ? "tab_on" : "ghost")); }, this.outil === v ? "tab_on" : "ghost");
+      b.dataset.o = v; outils.append(b);
+    }
+    outils.append(petit("Annuler", () => this.annuler(), "ghost"), petit("Tout effacer", () => { this.snap(); this.px.fill(-1); this.peindre(); }, "ghost"));
+    const couls = el("div.at-couleurs", {role: "radiogroup", "aria-label": "Palette du jour : " + nomPal});
+    pal.forEach((c, i) => {
+      const b = el("button.at-coul" + (i === this.coul ? ".on" : ""), {type: "button", role: "radio", "aria-checked": String(i === this.coul), title: "Couleur " + (i + 1), "aria-label": "Couleur " + (i + 1)}, el("span", {style: {background: c}}));
+      b.addEventListener("click", () => { this.coul = i; couls.querySelectorAll(".at-coul").forEach((x, j) => { x.classList.toggle("on", j === i); x.setAttribute("aria-checked", String(j === i)); }); if (this.outil === "gomme") this.outil = "crayon"; });
+      couls.append(b);
+    });
+    this.toile = el("canvas.at-toile", {width: AT_N * 20, height: AT_N * 20, "aria-label": "Grille de dessin 16 × 16"});
+    this.brancher(this.toile);
+    this.nom = entree("", {placeholder: "Nom de l'autocollant (facultatif)", maxlength: 40});
+    this.creerBtn = bouton("Créer l'autocollant", () => this.creer(), "primary");
+    z.append(el("div.at-pal.petit", null, el("b", {texte: "Palette du jour : " + nomPal}), el("span.muted", {texte: " · change à minuit (heure de Toronto)"})),
+      outils, couls, el("div.at-cadre", null, this.toile), this.nom,
+      el("div.petit.muted.at-regle", {texte: "À la création, la rareté et le prix sont tirés au hasard puis gardés : commun 50 % (1 000–3 000), rare 40 % (3 000–6 000), très rare 10 % (6 000–9 000). Vente possible le jour même seulement."}),
+      this.creerBtn);
+    this.peindre();
+  }
+  snap() { this.histo.push(this.px.slice()); if (this.histo.length > 50) this.histo.shift(); }
+  annuler() { const h = this.histo.pop(); if (h) { this.px = h; this.peindre(); } }
+  peindre() {
+    const cv = this.toile, g = cv.getContext("2d"), k = cv.width / AT_N;
+    for (let y = 0; y < AT_N; y++) for (let x = 0; x < AT_N; x++) {
+      const v = this.px[y * AT_N + x];
+      g.fillStyle = v >= 0 ? this.pal[v] : ((x + y) % 2 ? "#d9dee8" : "#eef1f6");
+      g.fillRect(x * k, y * k, k, k);
+    }
+    g.strokeStyle = "rgba(0,0,0,.12)"; g.lineWidth = 1;
+    for (let i = 1; i < AT_N; i++) { g.beginPath(); g.moveTo(i * k + .5, 0); g.lineTo(i * k + .5, cv.height); g.moveTo(0, i * k + .5); g.lineTo(cv.width, i * k + .5); g.stroke(); }
+  }
+  /* applique l'outil à la case (x, y) */
+  appliquer(x, y) {
+    if (x < 0 || y < 0 || x >= AT_N || y >= AT_N) return;
+    const v = this.outil === "gomme" ? -1 : this.coul;
+    if (this.outil === "remplir") {
+      const cible = this.px[y * AT_N + x];
+      if (cible === v) return;
+      const pile = [[x, y]];
+      while (pile.length) {
+        const [a, b] = pile.pop();
+        if (a < 0 || b < 0 || a >= AT_N || b >= AT_N || this.px[b * AT_N + a] !== cible) continue;
+        this.px[b * AT_N + a] = v;
+        pile.push([a + 1, b], [a - 1, b], [a, b + 1], [a, b - 1]);
+      }
+      return;
+    }
+    const r = this.outil === "gros" ? 1 : 0;
+    for (let b = y; b <= y + r; b++) for (let a = x; a <= x + r; a++) if (a < AT_N && b < AT_N) this.px[b * AT_N + a] = v;
+  }
+  brancher(cv) {
+    let actif = null;
+    const caseDe = (e) => { const r = cv.getBoundingClientRect(); return [Math.floor((e.clientX - r.left) / r.width * AT_N), Math.floor((e.clientY - r.top) / r.height * AT_N)]; };
+    cv.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      try { cv.setPointerCapture(e.pointerId); } catch (er) { /* */ }
+      actif = e.pointerId; this.snap();
+      const [x, y] = caseDe(e); this.appliquer(x, y); this.peindre();
+    });
+    cv.addEventListener("pointermove", (e) => {
+      if (actif !== e.pointerId || this.outil === "remplir") return;
+      e.preventDefault();
+      const [x, y] = caseDe(e); this.appliquer(x, y); this.peindre();
+    });
+    const fin = (e) => { if (actif === e.pointerId) actif = null; };
+    cv.addEventListener("pointerup", fin); cv.addEventListener("pointercancel", fin);
+  }
+  creer() {
+    const sp = spriteDeGrille(this.px, this.pal, AT_N);
+    if (!sp) { this.erreur("Dessine au moins 8 pixels."); return; }
+    const nom = this.nom.value.trim() || "Création du " + this.jour.split("-").reverse().slice(0, 2).join("/");
+    const c = Creations.creer(this.app, nom, sp);
+    if (!c) { this.erreur("Tu as déjà créé ton autocollant aujourd'hui."); this.dessiner(); return; }
+    this.erreur(""); SonJeux.jouer("gain");
+    this.resultat = c.id;
+    this.dessiner();
+  }
+  carteCreation(k) {
+    const c = Creations.info[k], reste = Creations.resteVente(c), possede = (Geos.inventaire(this.app.donnees)[k] || 0) > 0;
+    const corps = [imgAutocollant(k, 4, ".bq-img"), el("b", {texte: c.n}), etiquetteRarete(k, c.rar) || el("span.petit.muted", {texte: "Commun"}),
+      el("span.petit", {texte: `Valeur ${fmtGeos(c.prix)} ${M("p")}`})];
+    if (!possede) corps.push(el("span.petit.muted", {texte: "Vendu"}));
+    else if (reste) {
+      const v = bouton("", async () => { if (await confirmerVenteCreation(this.app, k)) this.dessiner(); }, "ghost");
+      v.classList.add("petit", "bq-prix", "bq-vendre"); v.append(el("span", {texte: "Vendre"}), imgGeo(1), el("span", {texte: "+" + fmtGeos(c.prix)}));
+      corps.push(v, el("span.petit.cr-reste", {"data-fin": "1", "data-av": "Encore ", texte: "Encore " + dureeTexte(reste)}));
+    } else corps.push(el("span.petit.muted", {texte: "Vente fermée"}));
+    return el("div.carte.bq-art" + (c.rar === "rare" ? ".rare" : c.rar === "tres_rare" ? ".rare.tres-rare" : ""), null, ...corps);
+  }
+  afficherResultat() {
+    const k = this.resultat, c = Creations.info[k], z = this.zone;
+    const possede = (Geos.inventaire(this.app.donnees)[k] || 0) > 0, reste = Creations.resteVente(c);
+    const img = imgAutocollant(k, 10, ".at-res-img");
+    z.append(el("div.at-resultat" + (c.rar !== "commun" ? ".rare" : ""), null, img, el("h3", {texte: c.n}),
+      el("div.at-rar.at-rar-" + c.rar, {texte: RARETES[c.rar] + (effetAutocollant(k) ? " · " + NOM_EFFET[effetAutocollant(k)] : "")}),
+      el("div", {texte: `Valeur : ${fmtGeos(c.prix)} ${M("p")}`}),
+      possede ? el("div.petit.at-temps", {"data-fin": "1", "data-av": "Vendable aujourd'hui seulement : encore ", texte: "Vendable aujourd'hui seulement : encore " + dureeTexte(reste)})
+        : el("div.petit.muted", {texte: "Vendu."}),
+      possede && reste ? el("div.at-choix", null,
+        bouton(`Vendre pour ${fmtGeos(c.prix)}`, async () => { if (await confirmerVenteCreation(this.app, k)) this.dessiner(); }, "ghost"),
+        bouton("Garder dans l'inventaire", () => { Notifs.bulle(`« ${c.n} » est dans ton inventaire.`); this.fermer(); }, "primary")) : null));
+  }
+}
+/* grille (indices de couleur, -1 = vide) -> sprite compact « palette;largeur:pixels », rognée au plus juste ; null si moins de 8 pixels.
+   Même encodage que sprite_de_grille (PC). */
+function spriteDeGrille(px, pal, N) {
+  let x0 = N, y0 = N, x1 = -1, y1 = -1, n = 0;
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (px[y * N + x] >= 0) { n++; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  if (n < 8) return null;
+  const L = "ABCDEFGH", vus = new Set();
+  let s = "";
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const v = px[y * N + x]; if (v >= 0) vus.add(v); s += v >= 0 ? L[v] : "."; }
+  const p = [...vus].sort((a, b) => a - b).map(v => L[v] + pal[v].slice(1)).join("");
+  return p + ";" + (x1 - x0 + 1) + ":" + s.replace(/(.)\1{2,}/g, (m) => m.length + m[0]);
+}
+
+/* palette du jour de l'atelier (même tirage sur tous les appareils et sur le PC) : 8 couleurs */
+const PALETTES_JOUR = [
+  ["Arc-en-ciel", ["#e5484d", "#f28c28", "#ffd23f", "#3fbf5a", "#2d8cff", "#8b5cf6", "#ffffff", "#2b2b33"]],
+  ["Océan", ["#0b3d91", "#1f6fd1", "#3fa7ff", "#8fd3ff", "#2ec4c4", "#f5e6b8", "#ffffff", "#1b1d27"]],
+  ["Forêt", ["#1e5b2e", "#3fbf5a", "#9be34a", "#6b4226", "#c98a4b", "#f3d9a6", "#ff7a5c", "#1b1d27"]],
+  ["Coucher de soleil", ["#3a1c5c", "#8b2f8f", "#e5484d", "#ff7a45", "#ffb02e", "#ffe066", "#fff4e0", "#1b1d27"]],
+  ["Bonbons", ["#ff7ab6", "#ffb3d9", "#b9a2ff", "#7fd3ff", "#5fe0b0", "#fff2a8", "#ffffff", "#5a3a6e"]],
+  ["Volcan", ["#2b1a1a", "#5e1f1f", "#a3262f", "#e5484d", "#ff7a1a", "#ffb02e", "#ffe066", "#7d8798"]],
+  ["Glace", ["#1b2a4a", "#3f6fb0", "#8fb8ff", "#c6e2ff", "#e8f4ff", "#ffffff", "#b9a2ff", "#7d8798"]],
+  ["Désert", ["#6b4226", "#a8743f", "#d9b77a", "#f3d9a6", "#e8833a", "#3fae86", "#2f62d9", "#1b1d27"]],
+  ["Néon", ["#0d0d1a", "#39ff88", "#00e5ff", "#ff2bd6", "#ffe600", "#7a5cff", "#ffffff", "#3a3f4b"]],
+  ["Automne", ["#5e3a1c", "#9a6332", "#c45f12", "#e8833a", "#d9a12c", "#a3262f", "#8a8f3c", "#1b1d27"]],
+  ["Pastel", ["#ffd1dc", "#ffe5b4", "#fffacd", "#d4f7d4", "#cce7ff", "#e3d4ff", "#ffffff", "#6b6b80"]],
+  ["Chevalier", ["#2b2b33", "#4b4f5c", "#8c96a6", "#c4ccd8", "#f2c230", "#b8860b", "#b3202f", "#e8dfc8"]],
+];
+function paletteDuJour(jour) { return PALETTES_JOUR[hacheFnv("palette|" + (jour || jourToronto())) % PALETTES_JOUR.length]; }
+
+/* rareté d'un autocollant : « commun », « rare » ou « tres_rare » (mêmes valeurs que le champ « rar » des autocollants créés) */
+const RARETES = {commun: "Commun", rare: "Rare", tres_rare: "Très rare"};
+function rareteAc(s) {
+  if (Creations.info[s]) return Creations.info[s].rar;
+  if (PackAC.info[s]) return PackAC.info[s][1];
+  return (JX.effets || {})[s] ? "rare" : "commun";
+}
+function themeAc(s) {
+  if (Creations.info[s]) return "Mes créations";
+  if (PackAC.info[s]) return PackAC.info[s][0];
+  const a = JX.autocollants.find(x => x[0] === s);
+  return (a && PackAC.themes[a[3]]) || "Classiques";
+}
 function animationsJeux(app) { return (app || window.app).reglages.jeux_anim !== false && !(typeof Decor !== "undefined" && Decor.reduit); }
 function regEco(cle) { const a = window.app; return !!(a && a.reglages && a.reglages[cle] === true); }
 
@@ -148,9 +509,10 @@ const Geos = {
     app.sauver();
     return {s: art[0], nom: art[1], doublon: deja};
   },
-  acheter(app, s) {
+  /* achat au prix affiché par la boutique du jour (prix rabattu) ; sans prix : prix normal */
+  acheter(app, s, prix) {
     const art = JX.autocollants.find(x => x[0] === s);
-    if (!art || (this.inventaire(app.donnees)[s] || 0) > 0 || !this.depenser(app, art[2])) return false;
+    if (!art || (this.inventaire(app.donnees)[s] || 0) > 0 || !this.depenser(app, prix === undefined ? art[2] : prix)) return false;
     const e = this.compte(app);
     e.a[s] = (e.a[s] || 0) + 1;
     app.sauver();
@@ -291,81 +653,227 @@ function imgAutocollant(s, k, classe) {
   const url = spriteURL(s, k);
   return el("span.ac-fx.ac-fx-" + fx, {style: {"--ac-masque": `url("${url}")`}}, im);
 }
+/* étiquette de rareté (rare / très rare, avec l'effet animé) */
+function etiquetteRarete(s, rar) {
+  rar = rar || rareteAc(s);
+  if (rar === "commun") return null;
+  const fx = effetAutocollant(s);
+  return el("span.bq-rare.petit" + (rar === "tres_rare" ? ".tres-rare" : ""), {texte: RARETES[rar] + (fx ? " · " + NOM_EFFET[fx] : "")});
+}
+/* boutique (v31/v29) : 50 autocollants par jour (boutiqueDuJour), rabais du jour et de la semaine (le meilleur des deux),
+   achat au prix affiché, revente d'un doublon à 75 % du prix normal ; inventaire à part (Inventaire) */
 class Boutique extends Modal {
   constructor(app) {
-    super("Boutique", "Achète des autocollants, puis colle-les dans tes notes.", {classe: "large"});
+    super("Boutique du jour", "50 autocollants par jour, renouvelés à minuit (heure de Toronto). Achète-les, puis colle-les dans tes notes.", {classe: "large"});
     this.app = app;
     this.carte.classList.add("boutique");
     this.zone = el("div.bq-zone");
     this.carte.append(this.zone);
-    this.barre([], [bouton("Fermer", () => this.fermer(), "primary")]);
+    this.barre([bouton("Mon inventaire", () => { this.fermer(); new Inventaire(app).montrer(); }, "ghost")], [bouton("Fermer", () => this.fermer(), "primary")]);
     /* croix en haut : toujours visible, même si la feuille est coupée par la barre de Safari */
     const x = el("button.bq-x", {type: "button", "aria-label": "Fermer", texte: "✕"});
     x.addEventListener("click", (e) => { e.preventDefault(); this.fermer(); });
     this.carte.append(x);
+    this.minuterie = setInterval(() => this.majCompte(), 20000);
     this.dessiner();
   }
+  fermer() { clearInterval(this.minuterie); super.fermer(); }
+  /* compte à rebours ; à minuit (Toronto), la boutique change d'elle-même */
+  majCompte() {
+    if (!this.carte.isConnected) { clearInterval(this.minuterie); return; }
+    if (this.jour && jourToronto() !== this.jour) { this.dessiner(); return; }
+    const c = this.zone.querySelector(".bq-renouv");
+    if (c) c.textContent = "Nouvelle boutique dans " + dureeTexte(finJourToronto() - maintenantMs());
+  }
   dessiner() {
-    const app = this.app, d = app.donnees, solde = Geos.solde(d), inv = Geos.inventaire(d), ach = Geos.achats(d), ram = Geos.ramasses(d);
-    const z = this.zone; z.innerHTML = "";
+    const z = this.zone;
+    if (!PackAC.pret && !this.attendPack) {
+      this.attendPack = true;
+      z.innerHTML = ""; z.append(el("p.muted.bq-charge", {texte: "Chargement des autocollants…"}));
+      PackAC.charger().then((ok) => { this.packKo = !ok; if (this.carte.isConnected) this.dessiner(); });
+      return;
+    }
+    if (!PackAC.pret && !this.packKo) return;
+    const app = this.app, d = app.donnees, solde = Geos.solde(d), inv = Geos.inventaire(d), ram = Geos.ramasses(d);
+    const jour = this.jour = jourToronto(), B = this.B = boutiqueDuJour(jour);
+    const haut = z.scrollTop;
+    z.innerHTML = "";
     z.append(el("div.bq-tete", null,
       el("div.bq-solde", null, imgGeo(3), el("b.geos-solde", {texte: fmtGeos(solde)}), el("span.muted.geos-nom", {texte: M("p")})),
       el("div.bq-jour.petit.muted", {texte: `Récolte du jour : ${fmtGeos(ram)} / ${fmtGeos(GJ.plafond)}`}),
+      el("div.bq-renouv.petit", {texte: "Nouvelle boutique dans " + dureeTexte(finJourToronto() - maintenantMs())}),
       ram >= GJ.plafond ? el("div.bq-plafond.petit", {texte: `Plafond du jour atteint : retour des ${M("p")} demain.`}) : null));
-    const rangees = [];
-    for (const a of JX.autocollants) if (!rangees.includes(a[3])) rangees.push(a[3]);
-    for (const r of rangees) {
+    if (this.packKo) z.append(el("p.petit.muted", {texte: "Hors ligne : seuls les autocollants de base sont proposés pour l'instant."}));
+    const fin = new Date(Date.parse(decalerJour(B.semaine, 6) + "T12:00:00Z"));
+    const dim = fin.getUTCDate() + " " + ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."][fin.getUTCMonth()];
+    z.append(el("div.bq-rabais", null,
+      el("div.bq-bandeau.jour", null, el("b", {texte: `−${B.pctJour} % aujourd'hui`}), el("span", {texte: ` sur ${B.nbJour} article${B.nbJour > 1 ? "s" : ""} marqué${B.nbJour > 1 ? "s" : ""} « Rabais du jour »`})),
+      el("div.bq-bandeau.semaine", null, el("b", {texte: `−${B.pctSemaine} % cette semaine`}), el("span", {texte: ` sur le thème « ${B.themeSemaine} », jusqu'au dimanche ${dim}`})),
+      el("div.petit.muted", {texte: "Rabais non cumulables : le meilleur des deux s'applique."})));
+    const rares = B.articles.filter(a => a.rar !== "commun"), autres = B.articles.filter(a => a.rar === "commun");
+    for (const [titre, l] of [["Rares du jour", rares], ["Autocollants du jour", autres]]) {
       const g = el("div.bq-grille");
-      for (const [s, nom, prix, rr] of JX.autocollants) {
-        if (rr !== r) continue;
-        const possede = inv[s] || 0, fx = effetAutocollant(s), revente = Math.floor(prix * JX.ac_revente);
-        if (possede) {
-          const etat = el("span.petit.muted", {texte: possede > 1 ? `À toi · ${possede - 1} doublon${possede > 2 ? "s" : ""}` : "À toi · utilisable à l'infini"});
-          const vendre = possede > 1 ? bouton("", () => {
-            const g = Geos.revendre(app, s);
-            if (!g) return;
-            SonJeux.jouer("achat"); Notifs.bulle(`Doublon de « ${nom} » revendu : +${fmtGeos(g)} ${M("p")}.`); this.dessiner();
-          }, "ghost") : null;
-          if (vendre) { vendre.classList.add("petit", "bq-prix", "bq-vendre"); vendre.title = `Revendre un doublon pour ${fmtGeos(revente)} ${M("p")} (75 % du prix)`; vendre.append(el("span", {texte: "Revendre"}), imgGeo(1), el("span", {texte: "+" + fmtGeos(revente)})); }
-          g.append(el("div.carte.bq-art.possede" + (fx ? ".rare" : ""), null, imgAutocollant(s, 4, ".bq-img"), el("b", {texte: nom}),
-            fx ? el("span.bq-rare.petit", {texte: "Rare · " + NOM_EFFET[fx]}) : null, etat, vendre || el("span.bq-coche.petit", {texte: "✓ Dans l'inventaire"})));
-          continue;
-        }
-        const b = bouton("", () => {
-          if (!Geos.acheter(app, s)) { this.erreur(`Il manque ${fmtGeos(prix - Geos.solde(app.donnees))} ${M("p")} pour « ${nom} ».`); return; }
-          this.erreur(""); SonJeux.jouer("achat"); Notifs.bulle(`« ${nom} » ajouté à ton inventaire.`); this.dessiner();
-        }, prix <= solde ? "primary" : "ghost");
-        b.classList.add("petit", "bq-prix");
-        b.title = `Acheter « ${nom} » pour ${fmtGeos(prix)} ${M("p")}`;
-        b.append(imgGeo(1), el("span", {texte: fmtGeos(prix)}));
-        if (prix > solde) b.classList.add("trop-cher");
-        g.append(el("div.carte.bq-art" + (fx ? ".rare" : ""), null, imgAutocollant(s, 4, ".bq-img"), el("b", {texte: nom}),
-          fx ? el("span.bq-rare.petit", {texte: "Rare · " + NOM_EFFET[fx]}) : null,
-          el("span.petit.muted", {texte: "Pas encore à toi"}), b));
-      }
-      z.append(etiquette(r), g);
+      for (const a of l) g.append(this.carteArticle(a, inv[a.s] || 0, solde));
+      z.append(etiquette(`${titre} (${l.length})`), g);
     }
+    z.scrollTop = haut;
+  }
+  carteArticle(a, possede, solde) {
+    const app = this.app, revente = Math.floor(a.prix * JX.ac_revente);
+    const cls = ".carte.bq-art" + (a.rar === "rare" ? ".rare" : a.rar === "tres_rare" ? ".rare.tres-rare" : "") + (possede ? ".possede" : "") + (a.pct ? ".solde" : "");
+    const pct = a.pct ? el("span.bq-pct", {texte: `−${a.pct} %`, title: a.raison === "jour" ? "Rabais du jour" : `Rabais de la semaine (${a.theme})`}) : null;
+    const quoi = a.pct ? el("span.petit.bq-raison", {texte: a.raison === "jour" ? "Rabais du jour" : "Rabais de la semaine"}) : null;
+    if (possede) {
+      const etat = el("span.petit.muted", {texte: possede > 1 ? `À toi · ${possede - 1} doublon${possede > 2 ? "s" : ""}` : "À toi · utilisable à l'infini"});
+      let action = el("span.bq-coche.petit", {texte: "✓ Dans l'inventaire"});
+      if (possede > 1) {
+        action = bouton("", () => {
+          const g = Geos.revendre(app, a.s);
+          if (!g) return;
+          SonJeux.jouer("achat"); Notifs.bulle(`Doublon de « ${a.nom} » revendu : +${fmtGeos(g)} ${M("p")}.`); this.dessiner();
+        }, "ghost");
+        action.classList.add("petit", "bq-prix", "bq-vendre");
+        action.title = `Revendre un doublon pour ${fmtGeos(revente)} ${M("p")} (75 % du prix normal)`;
+        action.append(el("span", {texte: "Revendre"}), imgGeo(1), el("span", {texte: "+" + fmtGeos(revente)}));
+      }
+      return el("div" + cls, null, pct, imgAutocollant(a.s, 4, ".bq-img"), el("b", {texte: a.nom}), etiquetteRarete(a.s, a.rar), etat, action);
+    }
+    const b = bouton("", () => this.acheter(a), a.final <= solde ? "primary" : "ghost");
+    b.classList.add("petit", "bq-prix");
+    b.title = `Acheter « ${a.nom} » pour ${fmtGeos(a.final)} ${M("p")}`;
+    if (a.pct) b.append(el("s.bq-ancien", {texte: fmtGeos(a.prix)}));
+    b.append(imgGeo(1), el("span", {texte: fmtGeos(a.final)}));
+    if (a.final > solde) b.classList.add("trop-cher");
+    return el("div" + cls, null, pct, imgAutocollant(a.s, 4, ".bq-img"), el("b", {texte: a.nom}), etiquetteRarete(a.s, a.rar), quoi,
+      el("span.petit.muted", {texte: "Pas encore à toi"}), b);
+  }
+  acheter(a) {
+    if (jourToronto() !== this.jour) { Notifs.bulle("Minuit est passé : voici la nouvelle boutique."); this.dessiner(); return; }
+    if (!Geos.acheter(this.app, a.s, a.final)) { this.erreur(`Il manque ${fmtGeos(a.final - Geos.solde(this.app.donnees))} ${M("p")} pour « ${a.nom} ».`); return; }
+    this.erreur(""); SonJeux.jouer("achat"); Notifs.bulle(`« ${a.nom} » ajouté à ton inventaire.`); this.dessiner();
   }
 }
 
-/* inventaire : choisir un autocollant à coller (répond l'id, ou null) */
-function choisirAutocollant(app) {
-  return new Promise((res) => {
-    const m = new Modal("Mes autocollants", "Choisis un autocollant : il se pose sur la note (il reste dans ton inventaire), puis glisse-le où tu veux.");
-    const inv = Geos.inventaire(app.donnees), g = el("div.bq-grille.ac-choix");
-    let fait = false;
-    const finir = (v) => { if (!fait) { fait = true; res(v); } };
-    for (const [s, nom] of JX.autocollants) {
-      if (!inv[s]) continue;
-      g.append(el("button.carte.bq-art.ac-pick", {type: "button", onclick: () => { finir(s); m.fermer(); }}, imgAutocollant(s, 4, ".bq-img"), el("b", {texte: nom})));
+/* ---------- inventaire (v31/v29) : recherche (nom, thème), favoris (reglages.ac_favoris, synchronisés), filtres (favoris, thème,
+   rareté), tri par rareté ou par nom, nombre d'exemplaires. Mode « choisir » : toucher un autocollant le colle dans la note. */
+function cleTri(t) { return String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(); }
+const ORDRE_RARETE = {tres_rare: 0, rare: 1, commun: 2};
+function favorisAc(app) { const l = app.donnees.reglages.ac_favoris; return new Set(Array.isArray(l) ? l.filter(x => typeof x === "string") : []); }
+function basculerFavori(app, s) {
+  const f = favorisAc(app);
+  if (f.has(s)) f.delete(s); else f.add(s);
+  app.donnees.reglages.ac_favoris = [...f].sort();
+  app.sauver();
+  return f.has(s);
+}
+/* liste filtrée et triée (même calcul que liste_inventaire, PC) */
+function listeInventaire(d, f, inv) {
+  const q = cleTri(f.q).trim(), fav = new Set(Array.isArray(d.reglages.ac_favoris) ? d.reglages.ac_favoris : []);
+  const out = [];
+  const tous = JX.autocollants.map(a => [a[0], a[1]]).concat(Object.entries(Creations.info).map(([k, c]) => [k, c.n]));
+  for (const [s, nom] of tous) {
+    const n = inv[s] || 0;
+    if (!n) continue;
+    const th = themeAc(s), rar = rareteAc(s);
+    if (f.fav && !fav.has(s)) continue;
+    if (f.theme && th !== f.theme) continue;
+    if (f.rar && rar !== f.rar) continue;
+    if (q && !cleTri(nom + " " + th).includes(q)) continue;
+    out.push({s, nom, n, th, rar, fav: fav.has(s)});
+  }
+  out.sort((a, b) => (f.tri === "nom" ? 0 : ORDRE_RARETE[a.rar] - ORDRE_RARETE[b.rar]) || (cleTri(a.nom) < cleTri(b.nom) ? -1 : cleTri(a.nom) > cleTri(b.nom) ? 1 : 0) || (a.s < b.s ? -1 : 1));
+  return out;
+}
+class Inventaire extends Modal {
+  constructor(app, opts = {}) {
+    super("Mon inventaire", opts.choisir ? "Touche un autocollant : il se pose sur la note (il reste dans ton inventaire), puis glisse-le où tu veux."
+      : "Tous tes autocollants. Étoile = favori (synchronisé sur tes appareils).", {classe: "large"});
+    this.app = app; this.opts = opts; this.choix = null; this.max = 120;
+    const r = app.reglages;
+    this.f = {q: "", fav: false, theme: "", rar: "", tri: r.inv_tri === "nom" ? "nom" : "rarete"};
+    this.carte.classList.add("boutique", "inventaire");
+    this.recherche = entree("", {placeholder: "Rechercher un nom ou un thème", type: "search", "aria-label": "Rechercher"});
+    let t = null;
+    this.recherche.addEventListener("input", () => { clearTimeout(t); t = setTimeout(() => { this.f.q = this.recherche.value; this.max = 120; this.grille(); }, 150); });
+    this.filtres = el("div.inv-filtres");
+    this.zone = el("div.bq-zone");
+    this.carte.append(el("div.inv-tete", null, this.recherche, this.filtres), this.zone);
+    this.barre([bouton("Boutique", () => { this.fermer(); new Boutique(app).montrer(); }, "ghost")], [bouton("Fermer", () => this.fermer(), "primary")]);
+    const x = el("button.bq-x", {type: "button", "aria-label": "Fermer", texte: "✕"});
+    x.addEventListener("click", (e) => { e.preventDefault(); this.fermer(); });
+    this.carte.append(x);
+    this.zone.append(el("p.muted.bq-charge", {texte: "Chargement des autocollants…"}));
+    PackAC.charger().then(() => { if (this.carte.isConnected || !this.montre) { this.dessinerFiltres(); this.grille(); } });
+  }
+  montrer() { this.montre = true; super.montrer(); }
+  dessinerFiltres() {
+    const z = this.filtres, f = this.f; z.innerHTML = "";
+    const choix = (lbl, valeurs, cle) => {
+      const s = liste(valeurs, f[cle]);
+      s.setAttribute("aria-label", lbl); s.title = lbl;
+      s.addEventListener("change", () => { f[cle] = s.value; this.max = 120; if (cle === "tri") { this.app.reglages.inv_tri = s.value; this.app.enregistrerLocal(); } this.grille(); });
+      return s;
+    };
+    z.append(el("div.seg", null,
+      petit("Tous", () => { f.fav = false; this.dessinerFiltres(); this.grille(); }, f.fav ? "tab" : "tab_on"),
+      petit("★ Favoris", () => { f.fav = true; this.dessinerFiltres(); this.grille(); }, f.fav ? "tab_on" : "tab")),
+      choix("Thème", [["", "Thème : tous"]].concat(THEMES_AC.map(t => [t, t]), [["Mes créations", "Mes créations"]]), "theme"),
+      choix("Rareté", [["", "Rareté : toutes"], ["tres_rare", "Très rares"], ["rare", "Rares"], ["commun", "Communs"]], "rar"),
+      choix("Trier", [["rarete", "Tri : rareté"], ["nom", "Tri : nom A→Z"]], "tri"));
+  }
+  grille() {
+    const app = this.app, z = this.zone, inv = Geos.inventaire(app.donnees);
+    const l = listeInventaire(app.donnees, this.f, inv), total = Object.keys(inv).filter(k => SPRITES[k]).length;
+    z.innerHTML = "";
+    z.append(el("div.petit.muted.inv-compte", {texte: `${l.length} autocollant${l.length > 1 ? "s" : ""} affiché${l.length > 1 ? "s" : ""} · ${total} dans l'inventaire`}));
+    if (!total) { z.append(el("p.muted", {texte: `Ton inventaire est vide. Achète des autocollants dans la boutique avec tes ${M("p")}.`})); return; }
+    if (!l.length) { z.append(el("p.muted", {texte: this.f.fav ? "Aucun favori ici : touche l'étoile d'un autocollant pour l'ajouter." : "Aucun autocollant ne correspond."})); return; }
+    const g = el("div.bq-grille.inv-grille" + (this.opts.choisir ? ".ac-choix" : ""));
+    for (const a of l.slice(0, this.max)) {
+      const etoile = el("button.inv-etoile" + (a.fav ? ".on" : ""), {type: "button", "aria-pressed": String(a.fav), title: a.fav ? "Retirer des favoris" : "Ajouter aux favoris",
+        "aria-label": (a.fav ? "Retirer des favoris : " : "Ajouter aux favoris : ") + a.nom, texte: a.fav ? "★" : "☆"});
+      etoile.addEventListener("click", (e) => {
+        e.stopPropagation(); e.preventDefault();
+        const on = basculerFavori(app, a.s);
+        etoile.classList.toggle("on", on); etoile.textContent = on ? "★" : "☆"; etoile.setAttribute("aria-pressed", String(on));
+        etoile.title = on ? "Retirer des favoris" : "Ajouter aux favoris";
+        if (this.f.fav && !on) this.grille();
+      });
+      const corps = [imgAutocollant(a.s, 4, ".bq-img"), el("b", {texte: a.nom}), etiquetteRarete(a.s, a.rar), el("span.petit.muted", {texte: a.th}),
+        el("span.inv-nb.petit", {texte: "× " + a.n, title: a.n > 1 ? `${a.n} exemplaires (${a.n - 1} doublon${a.n > 2 ? "s" : ""})` : "1 exemplaire"})];
+      const cr = Creations.info[a.s];
+      if (cr && !this.opts.choisir) {
+        const reste = Creations.resteVente(cr);
+        corps.push(el("span.petit.muted", {texte: `Valeur ${fmtGeos(cr.prix)} ${M("p")}`}));
+        if (reste) {
+          const v = bouton("", async () => { if (await confirmerVenteCreation(app, a.s)) this.grille(); }, "ghost");
+          v.classList.add("petit", "bq-prix", "bq-vendre");
+          v.title = `Vendre pour ${fmtGeos(cr.prix)} ${M("p")} (aujourd'hui seulement)`;
+          v.append(el("span", {texte: "Vendre"}), imgGeo(1), el("span", {texte: "+" + fmtGeos(cr.prix)}));
+          corps.push(v, el("span.petit.cr-reste", {texte: "Encore " + dureeTexte(reste)}));
+        } else corps.push(el("span.petit.muted", {texte: "Vente fermée (créé le " + cr.j.split("-").reverse().slice(0, 2).join("/") + ")"}));
+      }
+      const cls = ".carte.bq-art.inv-art" + (a.rar === "rare" ? ".rare" : a.rar === "tres_rare" ? ".rare.tres-rare" : "");
+      if (this.opts.choisir) {
+        const c = el("div" + cls + ".ac-pick", {role: "button", tabindex: 0, title: "Coller « " + a.nom + " »"}, etoile, ...corps);
+        const prendre = () => { this.choix = a.s; this.fermer(); };
+        c.addEventListener("click", prendre);
+        c.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); prendre(); } });
+        g.append(c);
+      } else g.append(el("div" + cls, null, etoile, ...corps));
     }
-    if (!g.children.length) m.carte.append(el("p.muted", {texte: `Ton inventaire est vide. Achète des autocollants dans la boutique avec tes ${M("p")}.`}));
-    else m.carte.append(g);
-    m.barre([bouton("Boutique", () => { finir(null); m.fermer(); new Boutique(app).montrer(); }, "ghost")], [bouton("Fermer", () => { finir(null); m.fermer(); }, "primary")]);
-    const vieux = m.fermer.bind(m);
-    m.fermer = () => { vieux(); finir(null); };
-    m.montrer();
-  });
+    z.append(g);
+    if (l.length > this.max) {
+      const plus = bouton(`Afficher ${Math.min(120, l.length - this.max)} de plus (${l.length - this.max} restants)`, () => { this.max += 120; const h = z.scrollTop; this.grille(); z.scrollTop = h; }, "ghost");
+      plus.classList.add("inv-plus");
+      z.append(plus);
+    }
+  }
+  fermer() { super.fermer(); if (this.opts.fin) { const f = this.opts.fin; this.opts.fin = null; f(this.choix); } }
+}
+/* choisir un autocollant à coller (répond l'id, ou null) */
+function choisirAutocollant(app) {
+  return new Promise((res) => new Inventaire(app, {choisir: true, fin: res}).montrer());
 }
 function boutonAutocollants(action) {
   const b = bouton("", action, "ghost", {title: "Coller un autocollant"});
@@ -378,6 +886,13 @@ function boutonOutilAutocollants(action) {
   return el("button.cah-outil.cah-outil-ac", {type: "button", title: "Autocollants", "aria-label": "Autocollants", onclick: action}, imgSprite("etoile", 2, ".cah-ac-img"));
 }
 
+/* angle d'un autocollant (v31/v29, champ « r », degrés dans le sens horaire) : ramené dans [0, 360[, au dixième ; 0 = absent */
+function angleAc(r) { let v = Math.round((((Number(r) || 0) % 360) + 360) % 360 * 10) / 10; return v >= 360 ? 0 : v; }
+function poserAngleAc(a, r) { const v = angleAc(r); if (v) a.r = v; else delete a.r; }
+/* demi-largeur de la boîte (droite) d'un autocollant tourné, en unités de page */
+function demiAc(a) { const t = (a.t || AC_TAILLE) / 2, r = (a.r || 0) * Math.PI / 180; return t * (Math.abs(Math.cos(r)) + Math.abs(Math.sin(r))); }
+/* rotation libre au glisser : aimantée aux multiples de 15° à moins de 2° près (même règle sur le PC) */
+function aimanterAngle(d) { const m = Math.round(d / 15) * 15; return Math.abs(d - m) < 2 ? m : d; }
 /* copie d'un autocollant posé (v30/v28) : même image « s », même taille « t », même page, nouvel id, décalée de « d » ; n'achète rien */
 function copieAutocollant(a, d, borne) {
   const c = Object.assign({}, a, {id: newId(), x: Math.round((a.x + d) * 10) / 10, y: Math.round((a.y + d) * 10) / 10});
@@ -401,6 +916,7 @@ function remplirBarreAc(b, actions) {
   b.innerHTML = "";
   const pb = (t, titre, f, style) => { const x = petit(t, f, style || "ghost"); x.title = titre; x.setAttribute("aria-label", titre); return x; };
   b.append(el("span.petit.sel-nb", {texte: "Autocollant"}),
+    el("span.sel-groupe", null, el("span.petit.muted.sel-tourner", {texte: "Tourner"}), pb("↺", "Tourner de 15° vers la gauche", () => actions.tourner(-15)), pb("↻", "Tourner de 15° vers la droite", () => actions.tourner(15))),
     pb("Dupliquer", "Dupliquer l'autocollant (Ctrl+D)", actions.dupliquer),
     pb("Retirer", "Retirer de la note (il reste dans l'inventaire)", actions.retirer, "danger"),
     el("button.bs-x.sel-x", {type: "button", title: "Fermer", "aria-label": "Désélectionner l'autocollant", texte: "✕", onclick: actions.fermer}));
@@ -410,7 +926,9 @@ function remplirBarreAc(b, actions) {
 function normaliserAutocollant(a) {
   if (!a || typeof a !== "object" || typeof a.s !== "string") return null;
   const r = (v) => Math.round((Number(v) || 0) * 10) / 10;
-  return {id: String(a.id || newId()), s: a.s, p: String(a.p || ""), x: r(a.x), y: r(a.y), t: Math.max(30, Math.min(400, Math.round(Number(a.t) || AC_TAILLE)))};
+  const o = {id: String(a.id || newId()), s: a.s, p: String(a.p || ""), x: r(a.x), y: r(a.y), t: Math.max(30, Math.min(400, Math.round(Number(a.t) || AC_TAILLE)))};
+  poserAngleAc(o, a.r);                // v31/v29 : angle (absent = 0, rétrocompatible)
+  return o;
 }
 function autocollantsNote(n) {
   if (!n || !Array.isArray(n.autocollants)) return [];
@@ -422,7 +940,27 @@ function zoneAutocollant(a, rappels) {
   const x = el("button.ac-x", {type: "button", title: "Retirer de la note (il reste dans l'inventaire)", "aria-label": "Retirer l'autocollant"}, "✕");
   const fx = effetAutocollant(a.s);
   const poignee = el("button.ac-taille", {type: "button", title: "Glisser pour changer la taille", "aria-label": "Changer la taille de l'autocollant"});
-  const z = el("div.ac-zone" + (fx ? ".ac-fx.ac-fx-" + fx : ""), {"data-id": a.id, style: fx ? {"--ac-masque": `url("${spriteURL(a.s, 4)}")`} : {}}, imgSprite(a.s, 4, ".ac-img"), x, poignee);
+  const rot = el("button.ac-rot", {type: "button", title: "Glisser pour tourner (aimanté tous les 15°)", "aria-label": "Tourner l'autocollant"});
+  const z = el("div.ac-zone" + (fx ? ".ac-fx.ac-fx-" + fx : ""), {"data-id": a.id, style: fx ? {"--ac-masque": `url("${spriteURL(a.s, 4)}")`} : {}}, imgSprite(a.s, 4, ".ac-img"), x, poignee, rot);
+  /* poignée de rotation (au-dessus du centre, visible quand l'autocollant est choisi) : l'angle suit le pointeur autour du centre ;
+     un glisser = une seule étape d'annulation */
+  let gr = null;
+  rot.addEventListener("pointerdown", (e) => {
+    e.preventDefault(); e.stopPropagation();
+    try { rot.setPointerCapture(e.pointerId); } catch (er) { /* */ }
+    const r = z.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    gr = {id: e.pointerId, cx, cy, a0: Math.atan2(e.clientY - cy, e.clientX - cx), r0: z._ac.r || 0, x0: z._ac.x, y0: z._ac.y, deplace: false, taille: true};
+    rappels.debut(gr);
+  });
+  rot.addEventListener("pointermove", (e) => {
+    if (!gr || gr.id !== e.pointerId) return;
+    e.preventDefault();
+    const d = (Math.atan2(e.clientY - gr.cy, e.clientX - gr.cx) - gr.a0) * 180 / Math.PI;
+    const v = angleAc(aimanterAngle(angleAc(gr.r0 + d)));
+    if (v !== angleAc(z._ac.r)) { gr.deplace = true; rappels.rot(z._ac, v); }
+  });
+  const finR = (e) => { if (!gr || gr.id !== e.pointerId) return; const g = gr; gr = null; try { rot.releasePointerCapture(e.pointerId); } catch (er) { /* */ } rappels.fin(z._ac, g, false); };
+  rot.addEventListener("pointerup", finR); rot.addEventListener("pointercancel", finR); rot.addEventListener("lostpointercapture", finR);
   z._ac = a;
   x.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); rappels.retirer(z._ac); });
   /* poignée (coin bas-droit, visible quand l'autocollant est choisi) : la taille suit la distance au centre */
@@ -444,7 +982,7 @@ function zoneAutocollant(a, rappels) {
   poignee.addEventListener("pointerup", finT); poignee.addEventListener("pointercancel", finT); poignee.addEventListener("lostpointercapture", finT);
   let g = null;
   z.addEventListener("pointerdown", (e) => {
-    if (e.button > 0 || e.target === x || e.target === poignee) return;
+    if (e.button > 0 || e.target === x || e.target === poignee || e.target === rot) return;
     e.preventDefault(); e.stopPropagation();
     try { z.setPointerCapture(e.pointerId); } catch (er) { /* */ }
     g = {id: e.pointerId, sx: e.clientX, sy: e.clientY, x0: z._ac.x, y0: z._ac.y, deplace: false};
@@ -514,6 +1052,7 @@ class PageJeux {
   mise() { const m = parseInt(this.reg.jeux_mise); return isNaN(m) ? 50 : Math.max(GJ.mise_min, Math.min(GJ.mise_max, m)); }
   regler(k, v) { this.reg[k] = v; this.app.enregistrerLocal(); }
   rafraichir() {
+    PackAC.charger();                                    // v29 : les gains d'autocollants tirent dans tout le catalogue
     if (this.occupe) { this.majEntete(); return; }
     const z = this.el, app = this.app;
     z.innerHTML = "";
@@ -522,7 +1061,8 @@ class PageJeux {
     z.append(el("header.jx-entete", null,
       el("div.jx-titre-bloc", null, el("div.mono.muted", {texte: `CASINO DES ${M("P").toUpperCase()}`}), el("h1.page-h1", {texte: "Mini-jeux"}), this.lblJour),
       el("div.jx-porte", null, el("div.jx-solde", null, imgGeo(3), this.lblSolde, el("span.muted.geos-nom", {texte: M("p")})),
-        boutonIcone("etoile", "Boutique", () => new Boutique(app).montrer(), "primary"))));
+        el("div.jx-boutons", null, boutonIcone("crayon", "Créer un autocollant", () => new AtelierAc(app).montrer(), "ghost"),
+          boutonIcone("etoile", "Boutique", () => new Boutique(app).montrer(), "primary")))));
     // mise
     this.zMise = el("div.carte.jx-mise");
     z.append(this.zMise);

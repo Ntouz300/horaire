@@ -50,7 +50,7 @@ const DEFAUT_REGLAGES = {theme: "nuit", accent: "", forme: 2, texte: 100, h_debu
   notes_sync: "auto", notes_locales: [], rail_replie: false,
   fb_geos_local: false, fb_geos_groupe: false, fb_jeu_unique: false, fb_pause_fond: false, fb_notes_manuel: false, fb_estimation: false};
 const REG_LOCAUX = ["vue", "plein_ecran", "texte", "horaire", "page", "vue3d", "onglets_notes", "canevas_vues", "canevas_fond", "notes_repliees", "transferts_actif", "transferts_port", "icones_theme", "reduire_effets", "son_ambiance", "volume_ambiance", "brume",
-  "jeux_son", "jeux_anim", "geos_apparition", "jeux_mise", "jeux_choix", "notes_locales", "rail_replie",
+  "jeux_son", "jeux_anim", "geos_apparition", "jeux_mise", "jeux_choix", "notes_locales", "rail_replie", "inv_tri",
   "fb_geos_local", "fb_geos_groupe", "fb_jeu_unique", "fb_pause_fond", "fb_notes_manuel", "fb_estimation"];   // réglages propres à l'appareil
 /* synchronisation des notes : « auto » (toutes) ou « manuel » (interrupteur par note) ; le mode est synchronisé,
    la liste des notes gardées sur cet appareil (notes_locales) ne l'est pas. Le réglage local fb_notes_manuel force le mode manuel ici. */
@@ -62,6 +62,17 @@ function nouvelleNote(app, id) {
   r.notes_locales = (Array.isArray(r.notes_locales) ? r.notes_locales : []).filter(x => x !== id).concat([id]);
 }
 function noteLocale(reg, id) { return modeNotes(reg) === "manuel" && Array.isArray(reg.notes_locales) && reg.notes_locales.includes(id); }
+/* note non synchronisée (v31/v29) : champ de note « sync » = 0, choisi à la création ou dans les options de la note ;
+   absent = synchronisée (rétrocompatible). Une telle note n'est jamais envoyée à Firebase ni remplacée par le serveur. */
+function noteNonSync(d, id) { const n = d && Array.isArray(d.notes) ? d.notes.find(x => x.id === id) : null; return !!n && n.sync === 0; }
+/* note gardée hors de la synchro : interrupteur du mode manuel (notes_locales) ou champ sync = 0 */
+function noteHorsSync(app, id) { return noteLocale(app.reglages, id) || noteNonSync(app.donnees, id); }
+/* changer plus tard le choix d'une note : true = synchronisée (envoyée tout de suite), false = sur cet appareil seulement */
+function poserSyncNote(app, n, oui) {
+  const r = app.donnees.reglages;
+  if (Array.isArray(r.notes_locales)) r.notes_locales = r.notes_locales.filter(x => x !== n.id);
+  if (oui) delete n.sync; else n.sync = 0;
+}
 /* « Économie Firebase » : interrupteurs propres à l'appareil (tous coupés par défaut) */
 const FB_ECO = [["fb_geos_local", "Désynchroniser les géos (le solde reste sur cet appareil)"],
   ["fb_geos_groupe", "Regrouper l'écriture du compteur (toutes les 45 s ou à la fermeture)"],
@@ -381,7 +392,26 @@ function normaliserCompteGeo(e) {
   for (const [k, v] of Object.entries(e.a && typeof e.a === "object" && !Array.isArray(e.a) ? e.a : {})) { const n = entierPositif(v); if (k && n) a[k] = n; }
   const v = {};             // v (v29/v27) : doublons revendus, par autocollant (compteur qui ne fait que monter)
   for (const [k, x] of Object.entries(e.v && typeof e.v === "object" && !Array.isArray(e.v) ? e.v : {})) { const n = entierPositif(x); if (k && n) v[k] = n; }
-  return {g: entierPositif(e.g), d: entierPositif(e.d), j: /^\d{4}-\d{2}-\d{2}$/.test(String(e.j || "")) ? String(e.j) : "", r: entierPositif(e.r), a, v};
+  const o = {g: entierPositif(e.g), d: entierPositif(e.d), j: /^\d{4}-\d{2}-\d{2}$/.test(String(e.j || "")) ? String(e.j) : "", r: entierPositif(e.r), a, v};
+  // v31/v29 : autocollants créés dans l'atelier (cr) et date (Toronto) du dernier créé (cj) ; absents = aucun (rétrocompatible)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(e.cj || ""))) o.cj = String(e.cj);
+  const cr = {};
+  for (const [k, c] of Object.entries(e.cr && typeof e.cr === "object" && !Array.isArray(e.cr) ? e.cr : {})) { const x = normaliserCreation(k, c); if (x) cr[k] = x; }
+  if (Object.keys(cr).length) o.cr = cr;
+  return o;
+}
+/* autocollant créé : {n nom, sp dessin compact « palette;largeur:pixels » (≤ 24 × 24), rar, prix (dans la fourchette de la rareté),
+   j jour de création (Toronto), t instant} ; invalide -> null. Même contrôle que normaliser_creation (PC). */
+const CREATION_PRIX = {commun: [1000, 3000], rare: [3000, 6000], tres_rare: [6000, 9000]};
+function normaliserCreation(k, c) {
+  if (!/^c_[A-Za-z0-9]{4,40}$/.test(String(k)) || !c || typeof c !== "object") return null;
+  const sp = String(c.sp || ""), m = /^((?:[A-Za-z][0-9a-f]{6}){1,16});(\d{1,2}):([A-Za-z.0-9]{1,1200})$/.exec(sp);
+  if (!m || +m[2] < 1 || +m[2] > 24) return null;
+  const px = m[3].replace(/(\d+)(\D)/g, (_, n, ch) => ch.repeat(Math.min(576, +n)));
+  if (/\d/.test(px) || px.length % +m[2] || px.length / +m[2] > 24) return null;
+  const rar = CREATION_PRIX[c.rar] ? c.rar : null, prix = entierPositif(c.prix);
+  if (!rar || prix < CREATION_PRIX[rar][0] || prix > CREATION_PRIX[rar][1] || !/^\d{4}-\d{2}-\d{2}$/.test(String(c.j || ""))) return null;
+  return {n: String(c.n || "Ma création").slice(0, 40), sp, rar, prix, j: String(c.j), t: entierPositif(c.t)};
 }
 function normaliserGeos(x) {
   const out = {};
@@ -395,6 +425,9 @@ function fusionCompteGeo(a, b) {
   if (b.j > a.j) { o.j = b.j; o.r = b.r; } else if (b.j === a.j) o.r = Math.max(a.r, b.r);
   for (const [k, n] of Object.entries(b.a)) o.a[k] = Math.max(o.a[k] || 0, n);
   for (const [k, n] of Object.entries(b.v)) o.v[k] = Math.max(o.v[k] || 0, n);
+  const cj = (a.cj || "") > (b.cj || "") ? a.cj : b.cj;               // v31/v29 : le plus récent ; créations : union (jamais modifiées)
+  if (cj) o.cj = cj;
+  if (a.cr || b.cr) o.cr = Object.assign({}, b.cr || {}, a.cr || {});
   return o;
 }
 function normaliser(d) {
@@ -461,7 +494,7 @@ function sectionsDe(d) {
       out[k] = r;
     } else if (k === "notes") {
       // les notes : l'ordre, puis une section par note (sans le contenu des pages), puis une par page
-      out.notes = (v || []).map(n => n.id);
+      out.notes = (v || []).filter(n => n.sync !== 0).map(n => n.id);            // une note non synchronisée n'apparaît pas, même par son id
       for (const n of v || []) {
         const m = {};
         for (const [a, b] of Object.entries(n)) if (a !== "pages") m[a] = b;

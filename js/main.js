@@ -29,10 +29,12 @@ class App {
     });
     this.outils = new Outils(this);
     this.lireLien();
+    if (this.donnees && typeof Creations !== "undefined") Creations.integrer(this.donnees);   // v29 : autocollants créés (dessins)
     if (this.donnees) this.demarrerInterface();
     else this.ecranAccueil();
     this.sync.demarrer();
     Apparitions.demarrer(this);
+    if (typeof PackAC !== "undefined" && PackAC.besoin(this.donnees)) PackAC.charger();   // v29 : une note ou l'inventaire utilise le paquet
     document.addEventListener("keydown", (e) => this.clavier(e));
     window.addEventListener("resize", () => this.redessinerBientot());
     setInterval(() => this.ticSeconde(), 1000);

@@ -531,6 +531,7 @@ class PageNotes {
       el("span.petit.muted.nb-sync-aide", {texte: mode === "auto" ? "Toutes les notes sont synchronisées." : `Touche « Synchronisée » sur une note pour la garder sur cet appareil.${nbLoc ? ` ${nbLoc} note${nbLoc > 1 ? "s" : ""} sur cet appareil seulement.` : ""}`}));
   }
   basculerSyncNote(n) {
+    if (n.sync === 0) { this.changerSyncNote(n, true); return; }
     const app = this.app, r = app.donnees.reglages, l = Array.isArray(r.notes_locales) ? r.notes_locales.slice() : [];
     const i = l.indexOf(n.id);
     if (i >= 0) l.splice(i, 1); else l.push(n.id);
@@ -538,6 +539,17 @@ class PageNotes {
     app.enregistrerLocal();
     if (i >= 0) app.sync.localChange();                  // de nouveau synchronisée : envoyée tout de suite
     Notifs.bulle(i >= 0 ? `« ${n.titre || "Sans titre"} » est synchronisée.` : `« ${n.titre || "Sans titre"} » reste sur cet appareil.`);
+    this.bibliotheque();
+  }
+
+  /* choix « Synchroniser cette note » changé plus tard (options de la note, interrupteur de la carte) */
+  changerSyncNote(n, oui) {
+    const app = this.app, avant = !noteHorsSync(app, n.id);
+    poserSyncNote(app, n, oui);
+    app.sauver();
+    if (oui && !avant) app.sync.localChange();             // de nouveau synchronisée : envoyée tout de suite
+    if (oui !== avant) Notifs.bulle(oui ? `« ${n.titre || "Sans titre"} » est synchronisée.` :
+      `« ${n.titre || "Sans titre"} » reste sur cet appareil. Une copie déjà envoyée reste sur les autres appareils, sans les modifications suivantes.`);
     this.bibliotheque();
   }
 
@@ -789,8 +801,8 @@ class PageNotes {
     chev.addEventListener("contextmenu", (e) => { e.stopPropagation(); e.preventDefault(); });
     const surIpad = IPHONE && n.type === "cahier";       // cahier manuscrit : visible sur iPhone, mais il s'ouvre sur l'iPad ou le PC
     let bSync = null;
-    if (modeNotes(this.app.reglages) === "manuel") {
-      const loc = noteLocale(this.app.reglages, n.id);
+    if (modeNotes(this.app.reglages) === "manuel" || n.sync === 0) {
+      const loc = noteHorsSync(this.app, n.id);
       bSync = el("button.doc-sync" + (loc ? ".local" : ""), {type: "button", role: "switch", "aria-checked": String(!loc),
         title: loc ? "Non synchronisée : reste sur cet appareil (touche pour la synchroniser)" : "Synchronisée (touche pour la garder sur cet appareil)"},
         el("span.doc-sync-pt"), el("span", {texte: loc ? "Sur cet appareil" : "Synchronisée"}));
@@ -878,8 +890,11 @@ class PageNotes {
     const n = normaliserNote(Object.assign({id: newId(), maj: nowIsoMinutes(), cours: this.filtre.startsWith("m:") ? this.filtre.slice(2) : "",
       dossier: this.filtre.startsWith("d:") ? this.filtre.slice(2) : "", epingle: this.filtre === "*"}, opts));
     if (n.type === "cahier") n.pages = [pageVide(n.fond)];
+    const choix = n.sync;                                  // v31/v29 : choix de la fenêtre « Nouveau » (true / false) ; absent = règle habituelle
+    delete n.sync;
+    if (choix === false) n.sync = 0;
     this.app.donnees.notes.unshift(n);
-    nouvelleNote(this.app, n.id);
+    if (choix === undefined) nouvelleNote(this.app, n.id);
     this.app.sauver();
     this.ouvrir(n.id);
     return n;
@@ -971,6 +986,9 @@ class NouveauDocument extends Modal {
     this.pn = pn;
     this.type = IPHONE ? "texte" : "cahier"; this.fond = "ligne"; this.papier = "blanc"; this.couv = COUVERTURES[Math.floor(Math.random() * COUVERTURES.length)];
     this.titre = entree("", {placeholder: "Titre (facultatif)"});
+    // v31/v29 : « Synchroniser cette note » (oui par défaut ; non si « Notes en synchronisation manuelle par défaut » est activé ici)
+    this.sync = caseACocher(pn.app.reglages.fb_notes_manuel !== true, () => this.aideSync(), "Synchroniser cette note");
+    this.syncAide = el("div.petit.muted.nd-sync-aide");
     this.zone = el("div");
     this.carte.append(this.zone);
     this.barre([boutonIcone("dossier", "Nouveau dossier", () => { this.fermer(); new EditeurDossier(pn, null).montrer(); }, "ghost")],
@@ -999,11 +1017,16 @@ class NouveauDocument extends Modal {
       for (const c of COUVERTURES) couvs.append(el("span.sw" + (c === this.couv ? ".on" : ""), {style: {background: c}, onclick: () => { this.couv = c; this.dessiner(); }}));
       z.append(etiquette("Modèle de page"), modeles, etiquette("Papier"), papiers, etiquette("Couverture"), couvs);
     }
+    z.append(el("div.champ.nd-sync", null, this.sync, this.syncAide));
+    this.aideSync();
+  }
+  aideSync() {
+    this.syncAide.textContent = this.sync.valeur() ? "Envoyée sur tes autres appareils." : "Reste sur cet appareil : jamais envoyée à Firebase.";
   }
   valider() {
     const titre = this.titre.value.trim() || (this.type === "cahier" ? "Cahier sans titre" : "");
     this.fermer();
-    this.pn.creer({type: this.type, titre, fond: this.fond, papier: this.papier, couverture: this.type === "cahier" ? this.couv : ""});
+    this.pn.creer({type: this.type, titre, fond: this.fond, papier: this.papier, couverture: this.type === "cahier" ? this.couv : "", sync: this.sync.valeur()});
   }
 }
 class InfosDocument extends Modal {
@@ -1014,7 +1037,9 @@ class InfosDocument extends Modal {
     this.cours = liste([["", "Sans matière"]].concat(Object.keys(CATS).map(k => [k, CATS[k][1]])), CATS[n.cours] ? n.cours : "");
     this.dossier = liste([["", "Aucun dossier"]].concat((pn.app.donnees.dossiers || []).map(d => [d.id, d.nom])), n.dossier || "");
     this.fav = caseACocher(!!n.epingle, null, "Favori");
-    this.carte.append(champ("Titre", this.titre), el("div.grille2", null, champ("Matière", this.cours), champ("Dossier", this.dossier)), el("div.champ", null, this.fav));
+    this.sync = caseACocher(!noteHorsSync(pn.app, n.id), null, "Synchroniser cette note");
+    this.carte.append(champ("Titre", this.titre), el("div.grille2", null, champ("Matière", this.cours), champ("Dossier", this.dossier)), el("div.champ", null, this.fav),
+      el("div.champ", null, this.sync));
     this.zone = el("div"); this.carte.append(this.zone);
     this.dessiner();
     this.barre([bouton("Supprimer", () => { this.fermer(); pn.supprimer(n); }, "danger"), bouton("Dupliquer", () => { this.fermer(); pn.dupliquer(n); }),
@@ -1036,7 +1061,9 @@ class InfosDocument extends Modal {
   valider() {
     const n = this.n;
     Object.assign(n, {titre: this.titre.value.trim(), cours: this.cours.value, dossier: this.dossier.value, epingle: this.fav.valeur(), couverture: this.couv, papier: this.papier, maj: nowIsoMinutes()});
+    const oui = this.sync.valeur();
     this.fermer();
+    if (oui !== !noteHorsSync(this.pn.app, n.id)) { this.pn.changerSyncNote(n, oui); if (this.pn.doc === n.id && this.pn.ed) this.pn.ouvrir(n.id); return; }
     this.pn.app.sauver();
     if (this.pn.doc === n.id && this.pn.ed) this.pn.ouvrir(n.id); else this.pn.bibliotheque();
   }
@@ -1129,7 +1156,7 @@ class EditeurTexte {
     this.majAutocollants();
     if (!id) { this.barreAc.hidden = true; return; }
     remplirBarreAc(this.barreAc, {dupliquer: () => this.dupliquerAc(), retirer: () => { const a = (this.n.autocollants || []).find(x => x.id === this.acChoisi); if (a) this.rappelsAc().retirer(a); },
-      fermer: () => this.choisirAc(null)});
+      fermer: () => this.choisirAc(null), tourner: (d) => this.tournerAc(d)});
     this.placerBarreAc();
   }
   /* barre de l'autocollant choisi : en bas si elle ne le cache pas, sinon juste sous lui, sinon juste au-dessus (jamais par-dessus) */
@@ -1137,7 +1164,7 @@ class EditeurTexte {
     const b = this.barreAc, z = this.acZones.get(this.acChoisi);
     b.classList.remove("pres"); b.style.top = "";
     if (b.hidden || !z) return;
-    eviterRecouvrement(b, [z]);
+    eviterRecouvrement(b, [z, z.querySelector(".ac-rot")]);
     if (!b.classList.contains("en-haut")) return;
     b.classList.remove("en-haut");
     const c = this.el.getBoundingClientRect(), r = z.getBoundingClientRect(), h = b.offsetHeight, m = 30;
@@ -1154,6 +1181,13 @@ class EditeurTexte {
     this.n.autocollants.push(c);
     this.choisirAc(c.id); this.modifie(true);
   }
+  /* tourner l'autocollant choisi de d degrés (bouton ↺ / ↻ : pas de 15°) ; une étape d'annulation */
+  tournerAc(d) {
+    const a = (this.n.autocollants || []).find(x => x.id === this.acChoisi);
+    if (!a) return;
+    this.snapAc(); poserAngleAc(a, (a.r || 0) + d); this.majAutocollants(); this.modifie(true);
+    requestAnimationFrame(() => this.placerBarreAc());
+  }
   snapAc() { this.histoAc.push(clone(this.n.autocollants || [])); if (this.histoAc.length > 60) this.histoAc.shift(); this.refaitAc = []; }
   annulerAc() { const h = this.histoAc.pop(); if (!h) return; this.refaitAc.push(clone(this.n.autocollants || [])); this.n.autocollants = h; this.choisirAc(null); this.modifie(true); }
   refaireAc() { const h = this.refaitAc.pop(); if (!h) return; this.histoAc.push(clone(this.n.autocollants || [])); this.n.autocollants = h; this.choisirAc(null); this.modifie(true); }
@@ -1165,7 +1199,7 @@ class EditeurTexte {
       if (!z) { z = zoneAutocollant(a, this.rappelsAc()); z.classList.add("ac-texte"); this.calque.append(z); this.acZones.set(a.id, z); }
       z._ac = a;
       const taille = Math.round(AC_TAILLE_TEXTE * T.TXT * (a.t || AC_TAILLE) / AC_TAILLE);
-      z.style.cssText = `left:${a.x / 10}%;top:${a.y / 10}%;width:${taille}px;height:${taille}px`;
+      z.style.cssText = `left:${a.x / 10}%;top:${a.y / 10}%;width:${taille}px;height:${taille}px;--ac-r:${a.r || 0}deg`;
       z.classList.toggle("choisi", this.acChoisi === a.id);
     }
   }
@@ -1179,6 +1213,7 @@ class EditeurTexte {
         this.majAutocollants();
       },
       taille: (a, t) => { a.t = t; this.majAutocollants(); },
+      rot: (a, r) => { poserAngleAc(a, r); this.majAutocollants(); },
       fin: (a, g, annule) => {
         this.acGeste = null;
         if (g.deplace && annule) { a.x = g.x0; a.y = g.y0; }
@@ -1656,7 +1691,7 @@ class EditeurCahier {
   peindre(pid) {
     const f = this.feuilles.get(pid);
     if (!f) return;
-    if (f.canevas) { this.peindreCanevas(f); this.majPostits(f); this.majAutocollants(f); this.majPoigneeSel(f); return; }
+    if (f.canevas) { this.peindreCanevas(f); this.majPostits(f); this.majAutocollants(f); this.majPoigneeSel(f); this.majRotSel(f); return; }
     if (!f.alloue || f.aDessiner) this.allouer(f);
     f.aDessiner = false;
     const W = f.k * PAGE_L, H = f.page.h * f.k;
@@ -1665,6 +1700,7 @@ class EditeurCahier {
     this.majPostits(f);
     this.majAutocollants(f);
     this.majPoigneeSel(f);
+    this.majRotSel(f);
   }
   majNumero() {
     const z = this.pagesZone.getBoundingClientRect();
@@ -1930,6 +1966,7 @@ class EditeurCahier {
     const nb = traits.size + textes.size + acs.size;
     b.append(el("span.petit.sel-nb", {texte: `${nb} élément${nb > 1 ? "s" : ""}`}),
       groupe("Taille", pb("−", "Réduire la sélection", () => this.echelleSel(1 / 1.2)), pb("+", "Agrandir la sélection", () => this.echelleSel(1.2))),
+      groupe("Tourner", pb("↺", "Tourner de 15° vers la gauche", () => this.tournerSel(-15)), pb("↻", "Tourner de 15° vers la droite", () => this.tournerSel(15))),
       textes.size ? groupe("Texte", pb("A−", "Texte plus petit", () => this.texteSel(1 / 1.15)), pb("A+", "Texte plus grand", () => this.texteSel(1.15))) : null,
       traits.size ? groupe("Trait", pb("−", "Traits plus fins", () => this.traitSel(1 / 1.25)), pb("+", "Traits plus épais", () => this.traitSel(1.25))) : null,
       pb("Couleur", "Mettre la couleur actuelle", () => this.recolorer()), pb("Dupliquer", "Dupliquer", () => this.dupliquerSel()),
@@ -1941,7 +1978,7 @@ class EditeurCahier {
     let a = 1e9, b = 1e9, c = -1e9, d = -1e9;
     for (const tr of this.sel.traits) { const q = boiteTrait(tr), m = (tr.e || 3) / 2; a = Math.min(a, q[0] - m); b = Math.min(b, q[1] - m); c = Math.max(c, q[2] + m); d = Math.max(d, q[3] + m); }
     for (const tx of this.sel.textes) { a = Math.min(a, tx.x); b = Math.min(b, tx.y); c = Math.max(c, tx.x + (tx.w || 420)); d = Math.max(d, tx.y + hauteurTexte(tx)); }
-    for (const x of this.sel.acs || []) { const m = (x.t || AC_TAILLE) / 2; a = Math.min(a, x.x - m); b = Math.min(b, x.y - m); c = Math.max(c, x.x + m); d = Math.max(d, x.y + m); }
+    for (const x of this.sel.acs || []) { const m = demiAc(x); a = Math.min(a, x.x - m); b = Math.min(b, x.y - m); c = Math.max(c, x.x + m); d = Math.max(d, x.y + m); }
     this.sel.boite = [a, b, c, d];
   }
   /* actions sur la sélection : tout est annulable (snap), la barre ne bouge pas */
@@ -1957,7 +1994,72 @@ class EditeurCahier {
     const s = this.sel, b = s.boite;
     return {cx: (b[0] + b[2]) / 2, cy: (b[1] + b[3]) / 2,
       traits: [...s.traits].map(tr => ({tr, p: tr.p.slice(), e: tr.e || 3})), textes: [...s.textes].map(tx => ({tx, x: tx.x, y: tx.y, w: tx.w || 420, s: tx.s || 28})),
-      acs: [...(s.acs || [])].map(a => ({a, x: a.x, y: a.y, t: a.t || AC_TAILLE}))};
+      acs: [...(s.acs || [])].map(a => ({a, x: a.x, y: a.y, t: a.t || AC_TAILLE, r: a.r || 0}))};
+  }
+  /* tourner la sélection de « deg » degrés (sens horaire) autour du centre de son cadre, depuis l'état de départ « o » (v31/v29) :
+     les points des traits tournent ; un texte garde son sens de lecture, son centre tourne ; un autocollant tourne (champ « r »).
+     Même calcul que le PC (appliquer_rotation). */
+  appliquerRotation(o, deg) {
+    const r = (v) => Math.round(v * 10) / 10, cx = o.cx, cy = o.cy, t = deg * Math.PI / 180, c = Math.cos(t), sn = Math.sin(t);
+    const tourne = (x, y) => [cx + (x - cx) * c - (y - cy) * sn, cy + (x - cx) * sn + (y - cy) * c];
+    for (const {tr, p} of o.traits) for (let i = 0; i < p.length; i += 3) { const [x, y] = tourne(p[i], p[i + 1]); tr.p[i] = r(x); tr.p[i + 1] = r(y); }
+    for (const q of o.textes) {
+      const h = hauteurTexte(q.tx), [x, y] = tourne(q.x + q.w / 2, q.y + h / 2);
+      q.tx.x = r(x - q.w / 2); q.tx.y = r(y - h / 2);
+    }
+    for (const q of o.acs) { const [x, y] = tourne(q.x, q.y); q.a.x = r(x); q.a.y = r(y); poserAngleAc(q.a, q.r + deg); }
+  }
+  tournerSel(deg) {
+    const s = this.sel; if (!s) return;
+    this.snap(s.page);
+    this.appliquerRotation(this.origineSel(), deg);
+    this.majBoite(); this.peindre(s.page.id); this.modifie(); this.eviterBarre();
+  }
+  /* poignée de rotation de la sélection (au-dessus du milieu du cadre) : l'angle suit le pointeur autour du centre ;
+     aimantée tous les 15° ; un glisser = une seule étape d'annulation ; rien d'autre ne bouge pendant le geste */
+  majRotSel(f) {
+    let h = f.selRot;
+    if (!this.sel || this.sel.page !== f.page || !this.sel.boite) { if (h) h.hidden = true; return; }
+    if (!h) {
+      h = f.selRot = el("button.sel-rot", {type: "button", title: "Glisser pour tourner la sélection (aimanté tous les 15°)", "aria-label": "Tourner la sélection"});
+      f.div.append(h);
+      let g = null;
+      h.addEventListener("pointerdown", (e) => {
+        if (!this.sel) return;
+        e.preventDefault(); e.stopPropagation();
+        try { h.setPointerCapture(e.pointerId); } catch (er) { /* */ }
+        const r = f.cv.getBoundingClientRect(), o = this.origineSel();
+        const sx = r.left + (f.ox || 0) + o.cx * f.k, sy = r.top + (f.oy || 0) + o.cy * f.k;
+        this.snap(this.sel.page);
+        g = {id: e.pointerId, o, sx, sy, a0: Math.atan2(e.clientY - sy, e.clientX - sx), deg: 0, snap: this.histo.length, bx: h.style.left, by: h.style.top};
+        this.selGeste = g;
+      });
+      h.addEventListener("pointermove", (e) => {
+        if (!g || g.id !== e.pointerId) return;
+        e.preventDefault();
+        let d = (Math.atan2(e.clientY - g.sy, e.clientX - g.sx) - g.a0) * 180 / Math.PI;
+        d = ((d + 540) % 360) - 180;
+        g.deg = Math.round(aimanterAngle(d) * 10) / 10;
+        if (this._rafRot) return;
+        this._rafRot = requestAnimationFrame(() => { this._rafRot = 0; if (!g || !this.sel) return; this.appliquerRotation(g.o, g.deg); this.majBoite(); g.fixe = 1; this.peindre(f.page.id); g.fixe = 0; });
+      });
+      const fin = (e) => {
+        if (!g || g.id !== e.pointerId) return;
+        const gg = g; g = null; this.selGeste = null;
+        cancelAnimationFrame(this._rafRot); this._rafRot = 0;
+        try { h.releasePointerCapture(e.pointerId); } catch (er) { /* */ }
+        if (!this.sel) return;
+        if (Math.abs(gg.deg) < .05) { if (this.histo.length === gg.snap) this.histo.pop(); this.appliquerRotation(gg.o, 0); }
+        else { this.appliquerRotation(gg.o, gg.deg); this.modifie(); }
+        this.majBoite(); this.peindre(f.page.id); this.eviterBarre();
+      };
+      h.addEventListener("pointerup", fin); h.addEventListener("pointercancel", fin); h.addEventListener("lostpointercapture", fin);
+    }
+    // pendant le glisser, la poignée reste sous le doigt (le cadre droit change de taille en tournant)
+    if (this.selGeste && this.selGeste.fixe) { h.hidden = false; return; }
+    const b = this.sel.boite;
+    h.style.left = (((b[0] + b[2]) / 2) * f.k + (f.ox || 0)) + "px"; h.style.top = (b[1] * f.k + (f.oy || 0) - 40) + "px";
+    h.hidden = false;
   }
   /* agrandir / réduire autour du centre : traits (et épaisseurs), textes, autocollants ; même calcul que le PC (echelle_depuis) */
   appliquerEchelle(o, fac) {
@@ -2053,7 +2155,7 @@ class EditeurCahier {
     if (s.acs && s.acs.size) this.n.autocollants = (this.n.autocollants || []).filter(a => !s.acs.has(a));
     this.deselect(); this.peindre(p.id); this.modifie();
   }
-  deselect() { const had = this.sel; this.sel = null; this.barreSel.hidden = true; if (had) this.peindre(had.page.id); for (const f of this.feuilles.values()) if (f.selPoignee) f.selPoignee.hidden = true; }
+  deselect() { const had = this.sel; this.sel = null; this.barreSel.hidden = true; if (had) this.peindre(had.page.id); for (const f of this.feuilles.values()) { if (f.selPoignee) f.selPoignee.hidden = true; if (f.selRot) f.selRot.hidden = true; } }
 
   /* ----- zones de texte */
   /* ----- pointeur laser (« baguette magique ») : traînée lisse qui s'estompe toute seule ; rien n'est enregistré ni synchronisé */
@@ -2172,14 +2274,18 @@ class EditeurCahier {
     this.acChoisi = id;
     for (const x of this.feuilles.values()) this.majAutocollants(x);
     if (!id) { if (!this.sel) this.barreSel.hidden = true; return; }
-    remplirBarreAc(this.barreSel, {dupliquer: () => this.dupliquerAc(), fermer: () => this.choisirAc(null),
+    remplirBarreAc(this.barreSel, {dupliquer: () => this.dupliquerAc(), fermer: () => this.choisirAc(null), tourner: (d) => this.tournerAc(d),
       retirer: () => { const a = (this.n.autocollants || []).find(x => x.id === this.acChoisi), f = a && this.feuilles.get(a.p); if (f) this.rappelsAc(f).retirer(a); }});
     this.eviterBarre();
   }
   /* la barre flottante ne cache ni l'autocollant choisi ni la poignée de la sélection */
   eviterBarre() {
     const el = [];
-    for (const f of this.feuilles.values()) { if (this.acChoisi && f.acZones && f.acZones.get(this.acChoisi)) el.push(f.acZones.get(this.acChoisi)); if (f.selPoignee && !f.selPoignee.hidden) el.push(f.selPoignee); }
+    for (const f of this.feuilles.values()) {
+      if (this.acChoisi && f.acZones && f.acZones.get(this.acChoisi)) { const z = f.acZones.get(this.acChoisi); el.push(z, z.querySelector(".ac-rot")); }
+      if (f.selPoignee && !f.selPoignee.hidden) el.push(f.selPoignee);
+      if (f.selRot && !f.selRot.hidden) el.push(f.selRot);
+    }
     eviterRecouvrement(this.barreSel, el);
   }
   /* dupliquer l'autocollant choisi : copie décalée de 20, même image et même taille, nouvel id ; elle devient l'autocollant choisi */
@@ -2191,6 +2297,13 @@ class EditeurCahier {
     this.n.autocollants.push(c);
     this.choisirAc(c.id); this.modifie();
   }
+  /* tourner l'autocollant choisi de d degrés (bouton ↺ / ↻ : pas de 15°) ; une étape d'annulation */
+  tournerAc(d) {
+    const a = (this.n.autocollants || []).find(x => x.id === this.acChoisi), f = a && this.feuilles.get(a.p);
+    if (!f) return;
+    this.snap(f.page); poserAngleAc(a, (a.r || 0) + d); this.majAutocollants(f); this.modifie();
+    requestAnimationFrame(() => this.eviterBarre());
+  }
   majAutocollants(f) {
     const liste = autocollantsNote(this.n).filter(a => a.p === f.page.id);
     if (!f.acZones) f.acZones = new Map();
@@ -2200,7 +2313,7 @@ class EditeurCahier {
       if (!z) { z = zoneAutocollant(a, this.rappelsAc(f)); f.div.append(z); f.acZones.set(a.id, z); }
       z._ac = a;
       const t = a.t * f.k;
-      z.style.cssText = `left:${(a.x - a.t / 2) * f.k + (f.ox || 0)}px;top:${(a.y - a.t / 2) * f.k + (f.oy || 0)}px;width:${t}px;height:${t}px`;
+      z.style.cssText = `left:${(a.x - a.t / 2) * f.k + (f.ox || 0)}px;top:${(a.y - a.t / 2) * f.k + (f.oy || 0)}px;width:${t}px;height:${t}px;--ac-r:${a.r || 0}deg`;
       z.classList.toggle("choisi", this.acChoisi === a.id);
     }
   }
@@ -2218,6 +2331,7 @@ class EditeurCahier {
         if (!f.canevas) { const m = t / 2; a.x = Math.max(m, Math.min(PAGE_L - m, a.x)); a.y = Math.max(m, Math.min(f.page.h - m, a.y)); }
         this.majAutocollants(f);
       },
+      rot: (a, r) => { poserAngleAc(a, r); this.majAutocollants(f); },
       fin: (a, g, annule) => {
         this.acGeste = null;
         if (g.deplace && annule) { a.x = g.x0; a.y = g.y0; }

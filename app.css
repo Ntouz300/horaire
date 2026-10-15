@@ -1728,3 +1728,80 @@ body.tel .carte-modale.boutique .bq-grille { grid-template-columns: repeat(2, mi
 .cah-sel.en-haut { bottom: auto; top: 14px; }      /* la barre ne cache pas l'autocollant choisi ni la poignée */
 .nt-sel.pres { bottom: auto; }                     /* note texte : placée juste sous (ou sur) l'autocollant choisi, sans le cacher */
 body.tel .nt-sel .sel-nb { display: none; }         /* téléphone : une seule ligne (Dupliquer, Retirer, ✕) */
+
+/* v29 — rotation : autocollants (champ « r ») et sélection au lasso ; poignée ronde au-dessus (cible de 44 px, pastille de 26 px) */
+.ac-zone { transform: rotate(var(--ac-r, 0deg)); }
+.ac-calque .ac-zone { transform: translate(-50%, -50%) rotate(var(--ac-r, 0deg)); }
+.ac-zone .ac-rot, .sel-rot { width: 44px; height: 44px; padding: 0; border: 0; cursor: grab; touch-action: none;
+  background: radial-gradient(circle, var(--accent) 0 12.5px, rgba(0, 0, 0, .25) 13px, transparent 14px); }
+.ac-zone .ac-rot { display: none; position: absolute; left: 50%; top: -66px; margin-left: -22px; z-index: 2; }
+.ac-zone.choisi .ac-rot { display: block; }
+.ac-zone .ac-rot::after { content: ""; position: absolute; left: 21px; top: 35px; width: 2px; height: 28px; background: var(--accent); pointer-events: none; }
+.ac-zone .ac-rot::before, .sel-rot::before { content: "↻"; position: absolute; left: 0; right: 0; top: 0; line-height: 44px; text-align: center; color: #fff; font-size: 17px; font-weight: 700; pointer-events: none; }
+.sel-rot { position: absolute; z-index: 4; transform: translate(-50%, -50%); }
+.sel-rot[hidden] { display: none; }
+.sel-rot:active, .ac-zone .ac-rot:active { cursor: grabbing; }
+body.tel .cah-sel .sel-tourner { display: none; }
+body.tel .nt-sel .sel-groupe, body.tel .cah-sel .sel-groupe:has(.sel-tourner) { border-left: 0; padding-left: 0; }
+
+/* v29 — « Synchroniser cette note » (fenêtre Nouveau, options de la note) */
+.nd-sync { margin-top: 18px; }
+.nd-sync .case-texte, .carte-modale .champ > .case-texte { min-height: 44px; display: inline-flex; align-items: center; }
+.nd-sync-aide { padding-left: 30px; margin-top: -6px; }
+
+/* v29 — boutique du jour : compte à rebours, bandeaux de rabais, prix barré, pastille de rabais, très rare */
+.bq-renouv { color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
+.bq-rabais { display: flex; flex-direction: column; gap: 6px; margin: 0 0 10px; }
+.bq-bandeau { padding: 8px 12px; border-radius: calc(10px * var(--rad)); background: color-mix(in srgb, var(--accent) 14%, var(--surface2)); border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--rule)); }
+.bq-bandeau.semaine { background: color-mix(in srgb, #a259e6 16%, var(--surface2)); border-color: color-mix(in srgb, #a259e6 45%, var(--rule)); }
+.bq-bandeau b { font-weight: 800; }
+.bq-art { position: relative; }
+.bq-pct { position: absolute; top: 6px; left: 6px; padding: 2px 7px; border-radius: 999px; background: var(--danger); color: #fff; font-weight: 800; font-size: calc(12px * var(--txt)); }
+.bq-art.solde { border-color: color-mix(in srgb, var(--danger) 45%, var(--rule)); }
+.bq-raison { color: var(--danger); font-weight: 700; }
+.bq-ancien { opacity: .65; margin-right: 2px; text-decoration-thickness: 2px; }
+.bq-rare.tres-rare { color: #c77dff; }
+.bq-art.tres-rare { border-color: color-mix(in srgb, #c77dff 60%, var(--rule)); box-shadow: 0 0 0 1px color-mix(in srgb, #c77dff 30%, transparent) inset; }
+.btn.petit.bq-prix, body.tel .btn.petit.bq-prix { min-height: 44px; box-sizing: border-box; }
+
+/* v29 — inventaire : recherche, filtres (favoris, thème, rareté, tri), étoile des favoris, nombre d'exemplaires */
+.inv-tete { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 8px; }
+.inv-tete input[type="search"] { min-height: 44px; }
+.inv-filtres { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.inv-filtres .seg button { min-height: 44px; }
+.inv-filtres select { min-height: 44px; flex: 1 1 150px; max-width: 230px; }
+.inv-compte { margin: 0 0 6px; }
+.inv-art { padding-top: 14px; }
+.inv-etoile { position: absolute; top: 2px; right: 2px; width: 44px; height: 44px; border: 0; background: transparent; color: var(--muted);
+  font-size: 22px; line-height: 44px; cursor: pointer; padding: 0; }
+.inv-etoile.on { color: #ffc531; }
+.inv-nb { font-weight: 800; font-variant-numeric: tabular-nums; }
+.inv-plus { margin: 4px auto 12px; display: flex; }
+.ac-pick { cursor: pointer; }
+body.tel .inv-filtres select { max-width: none; flex: 1 1 calc(50% - 8px); }
+body.tel .inv-filtres .seg { flex: 1 1 100%; display: flex; }
+body.tel .inv-filtres .seg button { flex: 1; }
+body.tel .inv-filtres select { font-size: 14px; padding-left: 10px; padding-right: 24px; }
+
+/* v29 — atelier d'autocollants (mini-jeux) */
+.jx-boutons { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.at-zone { display: flex; flex-direction: column; gap: 10px; align-items: stretch; overflow-y: auto; min-height: 0; }
+.at-outils, .at-couleurs { display: flex; flex-wrap: wrap; gap: 6px; }
+.at-outils .btn { min-height: 44px; }
+.at-coul { width: 44px; height: 44px; border-radius: 50%; border: 2px solid transparent; background: transparent; padding: 0; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.at-coul span { width: 30px; height: 30px; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0, 0, 0, .35) inset; }
+.at-coul.on { border-color: var(--accent); }
+.at-cadre { display: flex; justify-content: center; }
+.at-toile { width: min(320px, 100%); aspect-ratio: 1; image-rendering: pixelated; touch-action: none; border-radius: 8px; border: 1px solid var(--line2); cursor: crosshair; }
+.at-limite { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: calc(10px * var(--rad)); background: var(--surface2); }
+.at-temps, .cr-reste { color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
+.at-resultat { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; padding: 10px 0; }
+.at-resultat h3 { margin: 0; }
+.at-res-img { display: block; max-width: 220px; max-height: 200px; image-rendering: pixelated; }
+.at-resultat .ac-fx { display: inline-block; }
+.at-rar { font-weight: 800; }
+.at-rar-rare { color: var(--accent); }
+.at-rar-tres_rare { color: #c77dff; }
+.at-choix { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.at-regle { line-height: 1.35; }
+.atelier input.saisie { min-height: 44px; }
