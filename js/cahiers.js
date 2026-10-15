@@ -18,6 +18,10 @@ const OUTILS_NOTES = [["plume", "Plume", "plume"], ["bille", "Stylo bille", "sty
   ["gomme", "Gomme", "gomme"], ["lasso", "Lasso", "lasso"], ["forme", "Formes", "forme"], ["texte", "Texte", "texte"],
   ["note", "Note adhésive", "note"], ["laser", "Pointeur laser", "laser"], ["main", "Main (déplacer le canevas)", "main"]];
 const STYLES_TRAIT = [["", "Uni"], ["t", "Tirets"], ["p", "Pointillés"]];
+/* menu des formes (v29/v27) : « auto » reconnaît la forme dessinée à main levée ; les autres tracent la forme exacte du point de départ au point d'arrivée */
+const FORMES_MENU = [["auto", "Automatique", "forme"], ["ligne", "Ligne", "f_ligne"], ["rect", "Rectangle", "f_rect"], ["ellipse", "Ellipse", "f_ellipse"], ["triangle", "Triangle", "f_triangle"]];
+Object.assign(ICONES, {f_ligne: [["l", 5, 19, 19, 5]], f_rect: [["r", 4, 6, 20, 18, 1]], f_ellipse: [["c", 12, 12, 8]], f_triangle: [["p", 1, 12, 4, 20, 19, 4, 19]]});
+const TENIR_MS = 550;          // crayon / doigt / souris immobile pendant ce temps à la fin d'un trait : le trait devient une ligne droite
 const UNITE_MM = PAGE_L / 210;                 // une page fait 210 mm de large (A4)
 const COULEURS_NOTE = ["#fff3a3", "#ffd6e7", "#cfeeff", "#d6f5c6", "#ffe0b8"];
 const MAX_ONGLETS = 8;
@@ -112,6 +116,46 @@ function dessinerFond(ctx, page, k, pc) {
     ctx.fillText("Questions / mots-clés", 24 * k, 186 * k); ctx.fillText("Résumé", 24 * k, (page.h - 246) * k);
   }
 }
+/* tirets et pointillés (v29/v27) : le motif est réparti régulièrement le long du trait et ajusté pour que le trait commence et finisse
+   sur un tiret (ou un point). Même calcul sur le PC (motif_trait) : mêmes tirets, mêmes points, à l'écran comme dans les PDF.
+   Renvoie {tirets: [[x, y, x, y…], …]} ou {points: [[x, y], …], r} en unités de page. */
+function motifTrait(p, e, d) {
+  const n = p.length / 3, L = [0];
+  for (let i = 1; i < n; i++) L.push(L[i - 1] + Math.hypot(p[3 * i] - p[3 * i - 3], p[3 * i + 1] - p[3 * i - 2]));
+  const total = L[n - 1];
+  const pt = (s) => {                                     // point à l'abscisse curviligne s (recherche par dichotomie)
+    let a = 0, b = n - 1;
+    while (b - a > 1) { const m = (a + b) >> 1; if (L[m] <= s) a = m; else b = m; }
+    const t = L[b] > L[a] ? (s - L[a]) / (L[b] - L[a]) : 0;
+    return [p[3 * a] + (p[3 * b] - p[3 * a]) * t, p[3 * a + 1] + (p[3 * b + 1] - p[3 * a + 1]) * t, a, b];
+  };
+  if (d === "p") {
+    let pas = Math.max(e * 2.4, e + 4.5);
+    const nb = Math.max(1, Math.round(total / pas)); pas = total / nb;
+    const points = [];
+    for (let j = 0; j <= nb; j++) { const q = pt(Math.min(total, j * pas)); points.push([q[0], q[1]]); }
+    return {points, r: Math.max(.9, e * .62)};
+  }
+  let a = Math.max(Math.max(e * 3, 8) - e, .5), g = Math.max(e * 2, 5) + e;   // longueurs tracées (les bouts ronds ajoutent e/2 de chaque côté)
+  const nb = Math.max(1, Math.round((total + g) / (a + g))), f = (total + g) / (nb * (a + g));
+  a *= f; g *= f;
+  const tirets = [];
+  for (let j = 0; j < nb; j++) {
+    const s0 = j * (a + g), s1 = Math.min(total, s0 + a), q0 = pt(s0), q1 = pt(s1), l = [q0[0], q0[1]];
+    for (let i = q0[3]; i <= q1[2]; i++) if (L[i] > s0 && L[i] < s1) l.push(p[3 * i], p[3 * i + 1]);
+    l.push(q1[0], q1[1]);
+    tirets.push(l);
+  }
+  return {tirets};
+}
+/* aperçu d'un style de trait (le vrai rendu, sur une petite vague) */
+function apercuTrait(d, e) {
+  const W = 96, H = 26, dpr = Math.min(2, window.devicePixelRatio || 1), cv = el("canvas.trait-apercu-cv", {width: W * dpr, height: H * dpr, style: {width: W + "px", height: H + "px"}});
+  const p = []; for (let i = 0; i <= 40; i++) { const x = 6 + i * 2.1; p.push(x, 13 + Math.sin(i / 40 * Math.PI * 2) * 6, 50); }
+  const ctx = cv.getContext("2d"); ctx.scale(dpr, dpr);
+  tracer(ctx, {c: T.ACCENT, e, k: "b", d: d || undefined, p}, 1, T.ACCENT);
+  return cv;
+}
 /* un trait : plume (pression), bille / forme (largeur fixe), surligneur (transparent) */
 function tracer(ctx, tr, k, encre, clair) {
   const p = tr.p || [];
@@ -122,9 +166,16 @@ function tracer(ctx, tr, k, encre, clair) {
   if (tr.o) { ctx.globalAlpha = clair ? .38 : .42; if (clair) ctx.globalCompositeOperation = "multiply"; }
   const ep = (tr.e || 3) * k;
   if (tr.k === "c") ctx.globalAlpha = .62;
-  if (tr.d === "t") ctx.setLineDash([ep * 3.2, ep * 2.2]); else if (tr.d === "p") ctx.setLineDash([.01, ep * 2.2]);
   const fixe = tr.o || tr.k === "b" || tr.k === "f" || tr.k === "c" || !!tr.d;
-  if (p.length <= 3) {
+  if ((tr.d === "t" || tr.d === "p") && p.length > 3) {         // tirets / pointillés réguliers
+    const m = motifTrait(p, tr.e || 3, tr.d);
+    if (m.points) { for (const [x, y] of m.points) { ctx.beginPath(); ctx.arc(x * k, y * k, m.r * k, 0, 7); ctx.fill(); } }
+    else {
+      ctx.lineWidth = ep; ctx.beginPath();
+      for (const l of m.tirets) { ctx.moveTo(l[0] * k, l[1] * k); for (let i = 2; i < l.length; i += 2) ctx.lineTo(l[i] * k, l[i + 1] * k); if (l.length === 4 && l[0] === l[2] && l[1] === l[3]) ctx.lineTo(l[0] * k + .01, l[1] * k); }
+      ctx.stroke();
+    }
+  } else if (p.length <= 3) {
     ctx.beginPath(); ctx.arc(p[0] * k, p[1] * k, Math.max(.7, ep * (fixe ? .5 : (.35 + (p[2] ?? 50) / 110) / 2)), 0, 7); ctx.fill();
   } else if (fixe) {
     ctx.lineWidth = ep;
@@ -287,6 +338,27 @@ function dansPoly(x, y, poly) {
   }
   return dedans;
 }
+/* forme exacte entre deux points (menu des formes) */
+function formeExacte(m, x0, y0, x1, y1) {
+  const a = Math.min(x0, x1), b = Math.min(y0, y1), c = Math.max(x0, x1), d = Math.max(y0, y1), r = (v) => Math.round(v * 10) / 10;
+  if (m === "ligne") return [r(x0), r(y0), 50, r(x1), r(y1), 50];
+  if (m === "rect") return [a, b, 50, c, b, 50, c, d, 50, a, d, 50, a, b, 50].map(r);
+  if (m === "triangle") return [(a + c) / 2, b, 50, c, d, 50, a, d, 50, (a + c) / 2, b, 50].map(r);
+  const pts = [], cx = (a + c) / 2, cy = (b + d) / 2, rx = (c - a) / 2, ry = (d - b) / 2;
+  for (let i = 0; i <= 64; i++) { const t = i / 64 * Math.PI * 2; pts.push(r(cx + rx * Math.cos(t)), r(cy + ry * Math.sin(t)), 50); }
+  return pts;
+}
+/* triangle le plus proche d'un tracé fermé : sommets = point le plus loin du centre, puis le plus loin de lui, puis le plus loin de ce côté */
+function triangleDe(p) {
+  const n = p.length / 3; let cx = 0, cy = 0;
+  for (let i = 0; i < p.length; i += 3) { cx += p[i] / n; cy += p[i + 1] / n; }
+  const loin = (fx) => { let best = 0, dm = -1; for (let i = 0; i < p.length; i += 3) { const d = fx(p[i], p[i + 1]); if (d > dm) { dm = d; best = i; } } return [p[best], p[best + 1]]; };
+  const A = loin((x, y) => Math.hypot(x - cx, y - cy)), B = loin((x, y) => Math.hypot(x - A[0], y - A[1]));
+  const C = loin((x, y) => distSeg(x, y, A[0], A[1], B[0], B[1]));
+  let e = 0;
+  for (let i = 0; i < p.length; i += 3) e += Math.min(distSeg(p[i], p[i + 1], A[0], A[1], B[0], B[1]), distSeg(p[i], p[i + 1], B[0], B[1], C[0], C[1]), distSeg(p[i], p[i + 1], C[0], C[1], A[0], A[1]));
+  return {pts: [A, B, C], e: e / n};
+}
 /* reconnaissance de forme : ligne, rectangle, ellipse, triangle */
 function reconnaitreForme(p) {
   const n = p.length / 3;
@@ -306,9 +378,14 @@ function reconnaitreForme(p) {
     eEll += Math.abs(Math.hypot(u, v) - 1);
     eRect += Math.min(Math.abs(Math.abs(u) - 1), Math.abs(Math.abs(v) - 1));
   }
+  const tri = triangleDe(p), eTri = tri.e / ((rx + ry) / 2) * n;      // même échelle que eEll / eRect (somme des écarts relatifs)
   const pts = [];
+  if (eTri < eEll * .8 && eTri < eRect * .8) {
+    const [A, B, C] = tri.pts, r = (v) => Math.round(v * 10) / 10;
+    return [r(A[0]), r(A[1]), 50, r(B[0]), r(B[1]), 50, r(C[0]), r(C[1]), 50, r(A[0]), r(A[1]), 50];
+  }
   if (eEll < eRect) {
-    for (let i = 0; i <= 64; i++) { const t = i / 64 * Math.PI * 2; pts.push(cx + rx * Math.cos(t), cy + ry * Math.sin(t), 50); }
+    for (let i = 0; i <= 64; i++) { const t = i / 64 * Math.PI * 2; pts.push(Math.round((cx + rx * Math.cos(t)) * 10) / 10, Math.round((cy + ry * Math.sin(t)) * 10) / 10, 50); }
   } else pts.push(a, b, 50, c, b, 50, c, d, 50, a, d, 50, a, b, 50);
   return pts;
 }
@@ -1040,12 +1117,13 @@ class EditeurTexte {
     this.majAutocollants(); this.modifie(true); Geos.maj(this.pn.app);
   }
   majAutocollants() {
-    const liste = autocollantsNote(this.n), taille = Math.round(AC_TAILLE_TEXTE * T.TXT);
+    const liste = autocollantsNote(this.n);
     for (const [id, z] of this.acZones) if (!liste.some(a => a.id === id)) { z.remove(); this.acZones.delete(id); }
     for (const a of liste) {
       let z = this.acZones.get(a.id);
       if (!z) { z = zoneAutocollant(a, this.rappelsAc()); z.classList.add("ac-texte"); this.calque.append(z); this.acZones.set(a.id, z); }
       z._ac = a;
+      const taille = Math.round(AC_TAILLE_TEXTE * T.TXT * (a.t || AC_TAILLE) / AC_TAILLE);
       z.style.cssText = `left:${a.x / 10}%;top:${a.y / 10}%;width:${taille}px;height:${taille}px`;
       z.classList.toggle("choisi", this.acChoisi === a.id);
     }
@@ -1059,10 +1137,12 @@ class EditeurTexte {
         a.y = Math.round(Math.max(0, Math.min(1000, g.y0 + dy / Math.max(1, r.height) * 1000)) * 10) / 10;
         this.majAutocollants();
       },
+      taille: (a, t) => { a.t = t; this.majAutocollants(); },
       fin: (a, g, annule) => {
         this.acGeste = null;
         if (g.deplace && annule) { a.x = g.x0; a.y = g.y0; }
         if (g.deplace && !annule) this.modifie(true);
+        if (g.taille) { this.majAutocollants(); return; }
         if (!g.deplace) this.acChoisi = this.acChoisi === a.id ? null : a.id;
         this.majAutocollants();
       },
@@ -1107,6 +1187,7 @@ class EditeurCahier {
     this.epPerso = r.epPerso && typeof r.epPerso === "object" ? r.epPerso : {};  // épaisseur réglée au curseur (mm × UNITE_MM)
     this.noteCoul = r.noteCoul || COULEURS_NOTE[0];
     this.laserDelai = [500, 1000, 2000, 4000].includes(r.laserDelai) ? r.laserDelai : 1000;   // durée avant que le trait du laser s'estompe (ms)
+    this.formeMode = FORMES_MENU.some(f => f[0] === r.forme) ? r.forme : "auto";
     this.filtreMini = "";
     this.histo = []; this.refait = [];
     this.editees = new Set();   // pages modifiées par l'utilisateur pendant cette ouverture
@@ -1128,7 +1209,7 @@ class EditeurCahier {
   }
   memo() {
     Stock.ecrire("horaire_outils_notes", {outil: this.outil, couleurs: this.couleurs, coul: this.coul, epIdx: this.epIdx, gommePrecise: this.gommePrecise,
-      doigt: this.doigt, zoom: this.zoom, miniatures: this.miniatures, style: this.style, epPerso: this.epPerso, noteCoul: this.noteCoul, laserDelai: this.laserDelai});
+      doigt: this.doigt, zoom: this.zoom, miniatures: this.miniatures, style: this.style, epPerso: this.epPerso, noteCoul: this.noteCoul, laserDelai: this.laserDelai, forme: this.formeMode});
   }
   pc() { return couleursPapier(this.n.papier); }
   construire() {
@@ -1174,6 +1255,13 @@ class EditeurCahier {
     this.pagesZone.classList.toggle("outil-main", this.outil === "main");
     const b = this.barreOutils; b.innerHTML = "";
     for (const [k, t, ico] of OUTILS_NOTES) {
+      if (k === "forme") {
+        const ic = FORMES_MENU.find(f => f[0] === this.formeMode)[2], bf = el("button.cah-outil.cah-outil-formes" + (this.outil === k ? ".on" : ""),
+          {type: "button", title: "Formes (touche encore pour choisir la forme)", "aria-label": "Formes", "aria-haspopup": "menu",
+           onclick: () => { if (this.outil === "forme") { this.menuFormes(bf); return; } this.outil = k; this.deselect(); this.memo(); this.dessinerOutils(); }}, icone(ic, 22), el("span.cah-caret"));
+        b.append(bf);
+        continue;
+      }
       b.append(el("button.cah-outil" + (this.outil === k ? ".on" : ""), {type: "button", title: t, "aria-label": t, onclick: () => { this.outil = k; if (k !== "lasso") this.deselect(); this.memo(); this.dessinerOutils(); }}, icone(ico, 22)));
     }
     // autocollants : dans la même section que les outils de dessin (ouvre l'inventaire, puis l'autocollant se pose sur la page)
@@ -1218,12 +1306,25 @@ class EditeurCahier {
     if (this.outil === "gomme") {
       o.append(el("span.cah-sep"), petit(this.gommePrecise ? "Gomme précise" : "Trait entier", () => { this.gommePrecise = !this.gommePrecise; this.memo(); this.dessinerOutils(); }, "ghost"));
     }
-    if (this.outil === "forme") o.append(el("span.petit.muted.cah-aide", {texte: "Dessine une ligne, un cercle ou un rectangle : il devient parfait."}));
+    if (this.outil === "forme") o.append(el("span.petit.muted.cah-aide", {texte: this.formeMode === "auto" ? "Dessine une ligne, un cercle, un rectangle ou un triangle : il devient parfait." : `${FORMES_MENU.find(f => f[0] === this.formeMode)[1]} : glisse du premier coin au coin opposé.`}));
     if (this.outil === "lasso") o.append(el("span.petit.muted.cah-aide", {texte: "Entoure des traits pour les déplacer, recolorer, dupliquer ou supprimer."}));
     if (this.outil === "texte") o.append(el("span.petit.muted.cah-aide", {texte: "Touche la page pour ajouter une zone de texte."}));
     // réglage du doigt (pour tous les outils) : au bout de la rangée des réglages
     o.append(el("span.espace"), petit("Doigt : " + (this.doigt ? "écrit" : "défile"), () => { this.doigt = !this.doigt; this.memo(); this.dessinerOutils(); this.majToucher(); }, this.doigt ? "tab_on" : "ghost"));
     requestAnimationFrame(() => { for (const r of [b, o]) r.classList.toggle("deborde", r.scrollWidth > r.clientWidth + 1); });   // rangée qui défile : bord estompé
+  }
+  /* menu des formes : flottant (aucun changement de mise en page), fermé par un choix ou un appui ailleurs */
+  menuFormes(btn) {
+    if (this._menuF) { this._menuF.fermer(); return; }
+    const r = btn.getBoundingClientRect(), m = el("div.cah-menu-formes", {role: "menu"});
+    const fermer = () => { m.remove(); document.removeEventListener("pointerdown", dehors, true); this._menuF = null; };
+    const dehors = (e) => { if (!m.contains(e.target) && e.target !== btn && !btn.contains(e.target)) fermer(); };
+    for (const [v, t, ic] of FORMES_MENU) m.append(el("button.cah-forme" + (this.formeMode === v ? ".on" : ""), {type: "button", role: "menuitem",
+      onclick: () => { this.formeMode = v; this.memo(); fermer(); this.dessinerOutils(); }}, icone(ic, 22), el("span", {texte: t})));
+    m.style.left = Math.max(8, Math.min(innerWidth - 220, r.left)) + "px"; m.style.top = (r.bottom + 6) + "px";
+    document.body.append(m);
+    document.addEventListener("pointerdown", dehors, true);
+    this._menuF = {fermer};
   }
   async changerCouleur(i) {
     const r = await choisirCouleur(this.couleurs[i] || "#1f6feb", "Couleur du stylo");
@@ -1241,7 +1342,7 @@ class EditeurCahier {
       styles.innerHTML = "";
       if (outil === "surligneur") return;
       for (const [v, t] of STYLES_TRAIT) {
-        const ap = el("span.trait-apercu" + (v ? "." + (v === "t" ? "tirets" : "points") : ""));
+        const ap = apercuTrait(v, outil === "surligneur" ? 12 : 3);
         styles.append(el("button.trait-style" + ((this.style[outil] || "") === v ? ".on" : ""), {type: "button", onclick: () => { this.style[outil] = v; this.memo(); dessiner(); this.dessinerOutils(); }}, ap, el("span", {texte: t})));
       }
     };
@@ -1652,7 +1753,7 @@ class EditeurCahier {
     const tr = {c: this.coul, e: this.epaisseur(), p: [x, y, pr]};
     if (surl) tr.o = 1;
     if (outil === "bille") tr.k = "b";
-    if (outil === "forme") tr.k = "f";
+    if (outil === "forme") { tr.k = "f"; if (this.formeMode !== "auto") { this.geste.exacte = true; tr.p = formeExacte(this.formeMode, x, y, x, y); } }
     if (!surl && this.style[outil]) tr.d = this.style[outil];
     this.geste.trait = tr;
   }
@@ -1668,10 +1769,24 @@ class EditeurCahier {
       if (g.laser) { this.laser(f, x, y, pr); continue; }
       if (g.poly) { g.poly.push(x, y); continue; }
       if (g.deplace) { this.deplacerSel(x - g.x0, y - g.y0); g.x0 = x; g.y0 = y; continue; }
+      if (g.trait && g.exacte) {                         // forme du menu : du point de départ au point courant
+        g.trait.p = formeExacte(this.formeMode, g.x0, g.y0, x, y); g.x1 = x; g.y1 = y;
+        clearTimeout(this._live); this._live = setTimeout(() => { this.peindre(f.page.id); tracer(f.ctx, g.trait, f.k, this.pc().encre); }, 16);
+        continue;
+      }
+      if (g.trait && g.droit) {                          // ligne droite : seule l'extrémité suit le pointeur
+        const t = g.trait.p; t[3] = x; t[4] = y; t[5] = pr;
+        clearTimeout(this._live); this._live = setTimeout(() => { this.peindre(f.page.id); const pc = this.pc(); tracer(f.ctx, g.trait, f.k, pc.encre, papierClair(pc)); }, 16);
+        continue;
+      }
       if (g.trait) {
         const t = g.trait.p, n = t.length;
         if (Math.hypot(x - t[n - 3], y - t[n - 2]) < 1) continue;
         t.push(x, y, pr);
+        if (g.outil !== "forme" && (g.ax === undefined || Math.hypot(ev.clientX - g.ax, ev.clientY - g.ay) > 4)) {
+          g.ax = ev.clientX; g.ay = ev.clientY;       // le pointeur bouge : on attend qu'il s'immobilise
+          clearTimeout(this._tenir); this._tenir = setTimeout(() => this.redresser(f, g), TENIR_MS);
+        }
         // trait en direct (sans tout redessiner)
         if (!g.trait.o && !g.trait.d) tracer(f.ctx, {c: g.trait.c, e: g.trait.e, k: g.trait.k, p: t.slice(-6)}, f.k, this.pc().encre);
         else if (g.trait.d) { clearTimeout(this._live); this._live = setTimeout(() => { this.peindre(f.page.id); tracer(f.ctx, g.trait, f.k, this.pc().encre); }, 16); }
@@ -1682,11 +1797,22 @@ class EditeurCahier {
     if (g.deplace) this.peindre(f.page.id);
     if (g.outil === "plume" && g.trait && g.trait.p.length > 6 && f.div.offsetHeight && e.clientY > f.cv.getBoundingClientRect().bottom - 40 && f.page === this.n.pages[this.n.pages.length - 1]) { /* bas de la dernière page : rien */ }
   }
+  /* ligne droite façon GoodNotes : le trait est tenu immobile à la fin → segment parfaitement droit (si le tracé ressemblait à une ligne) */
+  redresser(f, g) {
+    if (this.geste !== g || !g.trait || g.droit || g.exacte) return;
+    const t = g.trait.p, n = t.length, x0 = t[0], y0 = t[1], x1 = t[n - 3], y1 = t[n - 2], l = Math.hypot(x1 - x0, y1 - y0);
+    if (n < 9 || l < 15) return;
+    let dev = 0;
+    for (let i = 0; i < n; i += 3) dev = Math.max(dev, distSeg(t[i], t[i + 1], x0, y0, x1, y1));
+    if (dev > Math.max(20, l * .3)) return;
+    g.trait.p = [x0, y0, t[2], x1, y1, t[n - 1]]; g.droit = true;
+    this.peindre(f.page.id); const pc = this.pc(); tracer(f.ctx, g.trait, f.k, pc.encre, papierClair(pc));
+  }
   relache(f, e) {
     if (f.canevas && this.finCanevas(f, e)) return;
     const g = this.geste;
     if (!g || g.id !== e.pointerId) return;
-    clearTimeout(this._live);
+    clearTimeout(this._live); clearTimeout(this._tenir);
     this.geste = null;
     if (g.outil === "gomme") { this.peindre(f.page.id); this.modifie(); return; }
     if (g.laser) { this.laserFin(f); return; }
@@ -1694,7 +1820,8 @@ class EditeurCahier {
     if (g.deplace) { this.modifie(); this.dessinerMiniatures(); return; }
     if (g.trait) {
       this.snap(f.page);
-      if (g.outil === "forme") { const pts = reconnaitreForme(g.trait.p); if (pts) g.trait.p = pts; }
+      if (g.outil === "forme" && !g.exacte) { const pts = reconnaitreForme(g.trait.p); if (pts) g.trait.p = pts; }
+      if (g.exacte && (g.x1 === undefined || Math.hypot(g.x1 - g.x0, g.y1 - g.y0) < 3)) { this.peindre(f.page.id); return; }      // simple appui : rien
       if ((g.outil === "plume" || g.outil === "bille") && estGribouillis(g.trait.p) && effacerSousGribouillis(f.page, g.trait)) {
         this.peindre(f.page.id); this.modifie(); return;
       }
@@ -1745,15 +1872,42 @@ class EditeurCahier {
     this.majBoite();
     this.peindre(p.id);
     const b = this.barreSel; b.innerHTML = ""; b.hidden = false;
-    b.append(el("span.petit", {texte: `${traits.size + textes.size} élément${traits.size + textes.size > 1 ? "s" : ""}`}),
-      petit("Couleur actuelle", () => this.recolorer()), petit("Dupliquer", () => this.dupliquerSel()), petit("Supprimer", () => this.supprimerSel(), "danger"),
-      el("span.bs-x", {texte: "✕", onclick: () => { this.deselect(); this.peindre(p.id); }}));
+    const groupe = (nom, ...bs) => el("span.sel-groupe", null, el("span.petit.muted", {texte: nom}), ...bs);
+    const pb = (t, titre, f) => { const x = petit(t, f); x.title = titre; x.setAttribute("aria-label", titre); return x; };
+    b.append(el("span.petit.sel-nb", {texte: `${traits.size + textes.size} élément${traits.size + textes.size > 1 ? "s" : ""}`}),
+      groupe("Taille", pb("−", "Réduire la sélection", () => this.echelleSel(1 / 1.2)), pb("+", "Agrandir la sélection", () => this.echelleSel(1.2))),
+      textes.size ? groupe("Texte", pb("A−", "Texte plus petit", () => this.texteSel(1 / 1.15)), pb("A+", "Texte plus grand", () => this.texteSel(1.15))) : null,
+      traits.size ? groupe("Trait", pb("−", "Traits plus fins", () => this.traitSel(1 / 1.25)), pb("+", "Traits plus épais", () => this.traitSel(1.25))) : null,
+      pb("Couleur", "Mettre la couleur actuelle", () => this.recolorer()), pb("Dupliquer", "Dupliquer", () => this.dupliquerSel()),
+      cls(pb("Supprimer", "Supprimer", () => this.supprimerSel()), "danger"),
+      el("button.bs-x.sel-x", {type: "button", title: "Fermer", "aria-label": "Tout désélectionner", texte: "✕", onclick: () => { this.deselect(); this.peindre(p.id); }}));
   }
   majBoite() {
     let a = 1e9, b = 1e9, c = -1e9, d = -1e9;
     for (const tr of this.sel.traits) { const q = boiteTrait(tr), m = (tr.e || 3) / 2; a = Math.min(a, q[0] - m); b = Math.min(b, q[1] - m); c = Math.max(c, q[2] + m); d = Math.max(d, q[3] + m); }
     for (const tx of this.sel.textes) { a = Math.min(a, tx.x); b = Math.min(b, tx.y); c = Math.max(c, tx.x + (tx.w || 420)); d = Math.max(d, tx.y + hauteurTexte(tx)); }
     this.sel.boite = [a, b, c, d];
+  }
+  /* actions sur la sélection : tout est annulable (snap), la barre ne bouge pas */
+  echelleSel(fac) {
+    const s = this.sel; if (!s) return;
+    this.snap(s.page);
+    const b = s.boite, cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2, r = (v) => Math.round(v * 10) / 10;
+    for (const tr of s.traits) { for (let i = 0; i < tr.p.length; i += 3) { tr.p[i] = r(cx + (tr.p[i] - cx) * fac); tr.p[i + 1] = r(cy + (tr.p[i + 1] - cy) * fac); } tr.e = Math.round(Math.max(.3, Math.min(80, (tr.e || 3) * fac)) * 100) / 100; }
+    for (const tx of s.textes) { tx.x = r(cx + (tx.x - cx) * fac); tx.y = r(cy + (tx.y - cy) * fac); tx.w = r(Math.max(40, (tx.w || 420) * fac)); tx.s = Math.round(Math.max(8, Math.min(200, (tx.s || 28) * fac))); }
+    this.majBoite(); this.peindre(s.page.id); this.modifie();
+  }
+  texteSel(fac) {
+    const s = this.sel; if (!s || !s.textes.size) return;
+    this.snap(s.page);
+    for (const tx of s.textes) tx.s = Math.round(Math.max(8, Math.min(200, (tx.s || 28) * fac)));
+    this.majBoite(); this.peindre(s.page.id); this.modifie();
+  }
+  traitSel(fac) {
+    const s = this.sel; if (!s || !s.traits.size) return;
+    this.snap(s.page);
+    for (const tr of s.traits) tr.e = Math.round(Math.max(.3, Math.min(80, (tr.e || 3) * fac)) * 100) / 100;
+    this.majBoite(); this.peindre(s.page.id); this.modifie();
   }
   dansBoite(x, y) { const b = this.sel.boite; return x >= b[0] - 12 && x <= b[2] + 12 && y >= b[1] - 12 && y <= b[3] + 12; }
   deplacerSel(dx, dy) {
@@ -1919,10 +2073,16 @@ class EditeurCahier {
         a.x = Math.round(x * 10) / 10; a.y = Math.round(y * 10) / 10;
         this.majAutocollants(f);
       },
+      taille: (a, t) => {
+        a.t = t;
+        if (!f.canevas) { const m = t / 2; a.x = Math.max(m, Math.min(PAGE_L - m, a.x)); a.y = Math.max(m, Math.min(f.page.h - m, a.y)); }
+        this.majAutocollants(f);
+      },
       fin: (a, g, annule) => {
         this.acGeste = null;
         if (g.deplace && annule) { a.x = g.x0; a.y = g.y0; }
         if (g.deplace && !annule) this.modifie();
+        if (g.taille) { this.majAutocollants(f); return; }
         if (!g.deplace) { const choisi = this.acChoisi === a.id ? null : a.id; this.acChoisi = choisi; for (const x of this.feuilles.values()) this.majAutocollants(x); }
         this.majAutocollants(f);
       },

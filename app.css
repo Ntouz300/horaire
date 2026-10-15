@@ -1686,3 +1686,32 @@ body.tel .carte-modale.boutique .bq-grille { grid-template-columns: repeat(2, mi
 .cahier .cah-options { gap: 0; }
 .cahier .cah-options .cah-sep, .cahier .cah-outils .cah-sep { margin: 0 4px; }
 .cahier .cah-options .espace { flex: 1 0 6px; }
+
+/* v27 — autocollants : ✕ et poignée de taille (cibles de 44 px, pastille visible de 26 px), boutique (doublons revendables) */
+.ac-zone .ac-x, .ac-zone .ac-taille { width: 44px; height: 44px; padding: 0; border: 0; color: #fff; font-weight: 700; line-height: 44px; text-align: center; cursor: pointer; touch-action: none; }
+.ac-zone .ac-x { right: -22px; top: -22px; background: radial-gradient(circle, var(--danger) 0 12.5px, rgba(0, 0, 0, .25) 13px, transparent 14px); box-shadow: none; }
+.ac-zone .ac-taille { display: none; position: absolute; right: -22px; bottom: -22px; z-index: 2; cursor: nwse-resize;
+  background: radial-gradient(circle, var(--accent) 0 12.5px, rgba(0, 0, 0, .25) 13px, transparent 14px); }
+.ac-zone .ac-taille::before { content: ""; position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; transform: translate(-50%, -50%);
+  border-right: 2.5px solid #fff; border-bottom: 2.5px solid #fff; }
+.ac-zone.choisi .ac-taille { display: block; }
+.bq-art.possede { border-color: color-mix(in srgb, var(--ok, #3fbf5a) 40%, var(--rule)); }
+.bq-coche { color: var(--ok, #3fbf5a); font-weight: 700; margin-top: 4px; min-height: 32px; display: inline-flex; align-items: center; }
+.bq-vendre { gap: 4px; }
+/* v27 — menu des formes, barre de sélection enrichie (flottante : la mise en page ne bouge jamais) */
+.cah-outil-formes { position: relative; }
+.cah-caret { position: absolute; right: 5px; bottom: 5px; width: 0; height: 0; border-left: 5px solid transparent; border-bottom: 5px solid currentColor; opacity: .7; }
+.cah-menu-formes { position: fixed; z-index: 90; display: flex; flex-direction: column; gap: 2px; padding: 6px; min-width: 200px; background: var(--surface2);
+  border: 1px solid var(--line2); border-radius: calc(14px * var(--rad)); box-shadow: 0 14px 36px rgba(0, 0, 0, .45); }
+.cah-forme { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border: 0; border-radius: 10px; background: transparent; color: var(--ink); font: inherit; cursor: pointer; text-align: left; }
+.cah-forme:hover { background: var(--surface3); }
+.cah-forme.on { background: color-mix(in srgb, var(--accent) 18%, var(--surface2)); color: var(--accent); }
+/* barre flottante : elle passe sur deux lignes si l'écran est étroit (elle flotte au-dessus de la page : rien d'autre ne bouge) */
+.cahier .cah-sel { width: max-content; max-width: calc(100% - 24px); flex-wrap: wrap; justify-content: center; row-gap: 4px; box-sizing: border-box; }
+.cahier .cah-sel > * { flex: none; }
+.trait-curseur { height: 44px; }
+.cah-sel .btn { min-height: 44px; min-width: 44px; }
+.sel-groupe { display: inline-flex; align-items: center; gap: 4px; padding: 0 4px; border-left: 1px solid var(--rule); }
+.sel-groupe > .muted { margin-right: 2px; }
+.sel-nb { padding: 0 4px; }
+.sel-x { min-width: 44px; min-height: 44px; border: 0; background: transparent; border-radius: 50%; }

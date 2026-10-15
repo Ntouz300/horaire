@@ -379,7 +379,9 @@ function normaliserCompteGeo(e) {
   e = e && typeof e === "object" && !Array.isArray(e) ? e : {};
   const a = {};
   for (const [k, v] of Object.entries(e.a && typeof e.a === "object" && !Array.isArray(e.a) ? e.a : {})) { const n = entierPositif(v); if (k && n) a[k] = n; }
-  return {g: entierPositif(e.g), d: entierPositif(e.d), j: /^\d{4}-\d{2}-\d{2}$/.test(String(e.j || "")) ? String(e.j) : "", r: entierPositif(e.r), a};
+  const v = {};             // v (v29/v27) : doublons revendus, par autocollant (compteur qui ne fait que monter)
+  for (const [k, x] of Object.entries(e.v && typeof e.v === "object" && !Array.isArray(e.v) ? e.v : {})) { const n = entierPositif(x); if (k && n) v[k] = n; }
+  return {g: entierPositif(e.g), d: entierPositif(e.d), j: /^\d{4}-\d{2}-\d{2}$/.test(String(e.j || "")) ? String(e.j) : "", r: entierPositif(e.r), a, v};
 }
 function normaliserGeos(x) {
   const out = {};
@@ -389,9 +391,10 @@ function normaliserGeos(x) {
 /* fusion de deux versions d'un même compteur : le plus élevé de chaque total est retenu (une mise n'est débitée qu'une fois) */
 function fusionCompteGeo(a, b) {
   a = normaliserCompteGeo(a); b = normaliserCompteGeo(b);
-  const o = {g: Math.max(a.g, b.g), d: Math.max(a.d, b.d), j: a.j, r: a.r, a: Object.assign({}, a.a)};
+  const o = {g: Math.max(a.g, b.g), d: Math.max(a.d, b.d), j: a.j, r: a.r, a: Object.assign({}, a.a), v: Object.assign({}, a.v)};
   if (b.j > a.j) { o.j = b.j; o.r = b.r; } else if (b.j === a.j) o.r = Math.max(a.r, b.r);
   for (const [k, n] of Object.entries(b.a)) o.a[k] = Math.max(o.a[k] || 0, n);
+  for (const [k, n] of Object.entries(b.v)) o.v[k] = Math.max(o.v[k] || 0, n);
   return o;
 }
 function normaliser(d) {

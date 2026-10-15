@@ -78,9 +78,12 @@ function opsPage(page, pc) {
       if (!p.length) continue;
       const col = rgbPdf(estHex(tr.c) ? tr.c : encre), e = tr.e || 3, fixe = tr.o || tr.k === "b" || tr.k === "f" || tr.k === "c" || !!tr.d;
       o.push("q 1 J 1 j" + (tr.o || tr.k === "c" ? (clair ? " /GM gs" : " /GN gs") : ""));
-      if (tr.d === "t") o.push(`0 J [${f2(e * 3.2 * ECH_PDF)} ${f2(e * 2.2 * ECH_PDF)}] 0 d`); else if (tr.d === "p") o.push(`1 J [0 ${f2(e * 2.2 * ECH_PDF)}] 0 d`);
       o.push(`${col} RG ${col} rg`);
-      if (p.length <= 3) {
+      if ((tr.d === "t" || tr.d === "p") && p.length > 3) {      // mêmes tirets / points qu'à l'écran (motifTrait)
+        const m = motifTrait(p, e, tr.d);
+        if (m.points) for (const [x, y] of m.points) o.push(cerclePdf(x * ECH_PDF, H - y * ECH_PDF, m.r * ECH_PDF));
+        else o.push(`${f2(e * ECH_PDF)} w ` + m.tirets.map(l => { let s = `${X(l[0])} ${Y(l[1])} m`; for (let i = 2; i < l.length; i += 2) s += ` ${X(l[i])} ${Y(l[i + 1])} l`; return s; }).join(" ") + " S");
+      } else if (p.length <= 3) {
         o.push(cerclePdf(p[0] * ECH_PDF, H - p[1] * ECH_PDF, Math.max(.5, e * (fixe ? .5 : (.35 + (p[2] ?? 50) / 110) / 2)) * ECH_PDF));
       } else if (fixe) {
         let s = `${f2(e * ECH_PDF)} w ${X(p[0])} ${Y(p[1])} m`;
