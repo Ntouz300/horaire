@@ -402,6 +402,7 @@ class PageNotes {
     this.modeSel = false;      // sélection de plusieurs documents
     this.selection = new Set();
     this.ancre = null;         // dernier document coché (Maj + clic : sélectionner une plage)
+    this.vues = new Map();     // id de note → position de la vue (mémoire de session : une note ne se recentre pas toute seule)
   }
   memoUI() { Stock.ecrire("horaire_notes_ui", {tri: this.tri, vue: this.vue}); }
   note(id) { return this.app.donnees.notes.find(n => n.id === (id || this.doc)) || null; }
@@ -1007,10 +1008,10 @@ class EditeurTexte {
     this.el = el("div.doc-vue", null,
       el("header.doc-barre", null, boutonIcone("retour", "Bibliothèque", () => pn.fermerDoc(), "tab"), el("span.espace"), this.etat,
         boutonIcone("etoile", "", () => { n.epingle = !n.epingle; this.modifie(true); this.majFav(); }, "ghost"),
-        boutonAutocollants(() => this.ajouterAutocollant()),
         boutonVocaux(pn.app, {note: n.id}, `Note : ${n.titre || "Sans titre"}`, () => this.enregistrer()),
         boutonIcone("reglages", "", () => { this.enregistrer(); new InfosDocument(pn, n).montrer(); }, "ghost"),
         boutonIcone("exporter", "", () => { this.enregistrer(); new ExportNote(n, null).montrer(); }, "ghost")),
+      el("div.cah-barre.nt-outils", null, el("div.cah-outils", null, boutonAutocollants(() => this.ajouterAutocollant()))),
       el("section.carte.doc-texte-ed", {style: {background: pc.fond, color: pc.encre}}, this.titre, el("div.nt-sep"), this.texte));
     // thème Hollow Knight : les notes au papier par défaut prennent l'allure d'un journal ancien
     if (themeHK() && !PAPIER_COUL[n.papier]) {
@@ -1140,7 +1141,6 @@ class EditeurCahier {
       boutonIcone("zoom-moins", "", () => this.setZoom(this.zoom / 1.2), "ghost"), el("span.mono.cah-zoom", {texte: ""}),
       boutonIcone("zoom-plus", "", () => this.setZoom(this.zoom * 1.2), "ghost"),
       boutonIcone("page-plus", "Page", () => this.menuPage(), "ghost"),
-      boutonAutocollants(() => this.ajouterAutocollant()),
       boutonVocaux(this.pn.app, {note: n.id}, `Note : ${n.titre || "Sans titre"}`, () => this.enregistrer()),
       boutonIcone("exporter", "", () => { this.enregistrer(); new ExportNote(this.n, this.pageCourante).montrer(); }, "ghost"),
       boutonIcone("reglages", "", () => { this.enregistrer(); new InfosDocument(this.pn, n).montrer(); }, "ghost"));
@@ -1148,6 +1148,9 @@ class EditeurCahier {
     this.optOutil = el("div.cah-options");
     this.barreSel = el("div.cah-sel", {hidden: true});
     this.pagesZone = el("div.cah-pages");
+    // dernière activité (crayon, doigt, souris, molette) : rien ne se réaffiche par-dessus une saisie en cours
+    const actif = () => { this.actif = Date.now(); };
+    for (const ev of ["pointerdown", "pointermove", "touchstart", "wheel", "keydown"]) this.pagesZone.addEventListener(ev, actif, {passive: true, capture: true});
     this.piste = el("div.cah-piste");
     this.pagesZone.append(this.piste);
     this.mini = el("aside.cah-mini");
@@ -1161,9 +1164,9 @@ class EditeurCahier {
   apresAffichage() {
     this.construirePages();
     this.dessinerMiniatures();
-    this.pagesZone.addEventListener("scroll", () => { if (!this._rafN) this._rafN = requestAnimationFrame(() => { this._rafN = 0; this.majNumero(); }); }, {passive: true});
+    this.pagesZone.addEventListener("scroll", () => { if (!this._rafN) this._rafN = requestAnimationFrame(() => { this._rafN = 0; this.majNumero(); this.memoPosition(); }); }, {passive: true});
   }
-  detruire() { this.enregistrerVue(); document.removeEventListener("keydown", this._clavier); document.removeEventListener("keyup", this._clavier); if (this._rafL) cancelAnimationFrame(this._rafL); if (this._ro) this._ro.disconnect(); if (this._io) this._io.disconnect(); if (this._io2) this._io2.disconnect(); if (this.finRendu) this.finRendu(); }
+  detruire() { this.memoPosition(); this.enregistrerVue(); document.removeEventListener("keydown", this._clavier); document.removeEventListener("keyup", this._clavier); if (this._rafL) cancelAnimationFrame(this._rafL); if (this._ro) this._ro.disconnect(); if (this._io) this._io.disconnect(); if (this._io2) this._io2.disconnect(); if (this.finRendu) this.finRendu(); }
 
   /* ----- barre d'outils */
   dessinerOutils() {
@@ -1171,11 +1174,15 @@ class EditeurCahier {
     this.pagesZone.classList.toggle("outil-main", this.outil === "main");
     const b = this.barreOutils; b.innerHTML = "";
     for (const [k, t, ico] of OUTILS_NOTES) {
-      b.append(el("button.cah-outil" + (this.outil === k ? ".on" : ""), {type: "button", title: t, onclick: () => { this.outil = k; if (k !== "lasso") this.deselect(); this.memo(); this.dessinerOutils(); }}, icone(ico, 22)));
+      b.append(el("button.cah-outil" + (this.outil === k ? ".on" : ""), {type: "button", title: t, "aria-label": t, onclick: () => { this.outil = k; if (k !== "lasso") this.deselect(); this.memo(); this.dessinerOutils(); }}, icone(ico, 22)));
     }
+    // autocollants : dans la même section que les outils de dessin (ouvre l'inventaire, puis l'autocollant se pose sur la page)
+    b.append(el("span.cah-sep"), boutonOutilAutocollants(() => this.ajouterAutocollant()));
     b.append(el("span.cah-sep"));
-    b.append(el("button.cah-outil", {type: "button", title: "Annuler", onclick: () => this.annuler()}, icone("annuler", 20)),
-      el("button.cah-outil", {type: "button", title: "Rétablir", onclick: () => this.refaire()}, icone("refaire", 20)));
+    b.append(el("button.cah-outil", {type: "button", title: "Annuler", "aria-label": "Annuler", onclick: () => this.annuler()}, icone("annuler", 20)),
+      el("button.cah-outil", {type: "button", title: "Rétablir", "aria-label": "Rétablir", onclick: () => this.refaire()}, icone("refaire", 20)));
+    const defile = b.scrollLeft;   // la rangée garde sa position de défilement (rien ne bouge en changeant d'outil)
+    requestAnimationFrame(() => { b.scrollLeft = defile; });
     const o = this.optOutil; o.innerHTML = "";
     if (["plume", "bille", "surligneur", "forme", "texte"].includes(this.outil)) {
       this.couleurs.forEach((c, i) => {
@@ -1214,7 +1221,9 @@ class EditeurCahier {
     if (this.outil === "forme") o.append(el("span.petit.muted.cah-aide", {texte: "Dessine une ligne, un cercle ou un rectangle : il devient parfait."}));
     if (this.outil === "lasso") o.append(el("span.petit.muted.cah-aide", {texte: "Entoure des traits pour les déplacer, recolorer, dupliquer ou supprimer."}));
     if (this.outil === "texte") o.append(el("span.petit.muted.cah-aide", {texte: "Touche la page pour ajouter une zone de texte."}));
+    // réglage du doigt (pour tous les outils) : au bout de la rangée des réglages
     o.append(el("span.espace"), petit("Doigt : " + (this.doigt ? "écrit" : "défile"), () => { this.doigt = !this.doigt; this.memo(); this.dessinerOutils(); this.majToucher(); }, this.doigt ? "tab_on" : "ghost"));
+    requestAnimationFrame(() => { for (const r of [b, o]) r.classList.toggle("deborde", r.scrollWidth > r.clientWidth + 1); });   // rangée qui défile : bord estompé
   }
   async changerCouleur(i) {
     const r = await choisirCouleur(this.couleurs[i] || "#1f6feb", "Couleur du stylo");
@@ -1271,7 +1280,7 @@ class EditeurCahier {
     });
     this.el.querySelector(".cah-zoom").textContent = Math.round(this.zoom * 100) + " %";
     this.majToucher(); this.majNumero();
-    if (!this._ro) { this._ro = new ResizeObserver(() => { clearTimeout(this._rz); this._rz = setTimeout(() => this.redimensionner(), 120); }); this._ro.observe(this.pagesZone); }
+    if (!this._ro) { this._ro = new ResizeObserver(() => this.redimensionnerBientot()); this._ro.observe(this.pagesZone); }
   }
   /* taille affichée seulement ; la toile (pixels) est allouée au moment de peindre */
   dimensionner(f, W) {
@@ -1425,13 +1434,38 @@ class EditeurCahier {
     f.dessines = dessines;
   }
   liberer(f) { if (!f.alloue) return; f.cv.width = 0; f.cv.height = 0; f.alloue = false; f.aDessiner = true; }
-  /* marges de chaque côté de la page : on la pousse à gauche ou à droite à la main, elle ne se recentre jamais */
+  /* marges libres tout autour de la page : on la pousse à gauche, à droite, en haut ou en bas, elle ne se recentre jamais.
+     Seule la première mise en place la centre (ou la remet là où elle était, si cette note a déjà été ouverte). */
   marges() {
-    const pz = this.pagesZone, m = this.n.pages.every(p => p.f === "canevas") ? 0 : Math.round(pz.clientWidth * 0.6), avant = parseFloat(this.piste.style.paddingLeft) || 14;
-    if (Math.abs(avant - (14 + m)) < 1) return;
-    this.piste.style.paddingLeft = (14 + m) + "px"; this.piste.style.paddingRight = (46 + m) + "px";
-    if (this._centre) pz.scrollLeft += 14 + m - avant;
-    else if (pz.scrollWidth > pz.clientWidth) { pz.scrollLeft = (pz.scrollWidth - pz.clientWidth) / 2; this._centre = true; }
+    const pz = this.pagesZone, libre = !this.n.pages.every(p => p.f === "canevas");
+    const mh = libre ? Math.round(pz.clientWidth * 0.85) : 0, mv = libre ? Math.round(pz.clientHeight * 0.5) : 0;
+    const avL = parseFloat(this.piste.style.paddingLeft) || 14, avT = parseFloat(this.piste.style.paddingTop) || 10;
+    if (this._place && Math.abs(avL - (14 + mh)) < 1 && Math.abs(avT - (10 + mv)) < 1) return;
+    const st = this.piste.style;
+    st.paddingLeft = (14 + mh) + "px"; st.paddingRight = (46 + mh) + "px"; st.paddingTop = (10 + mv) + "px"; st.paddingBottom = (60 + mv) + "px";
+    if (this._place) { pz.scrollLeft += 14 + mh - avL; pz.scrollTop += 10 + mv - avT; return; }
+    const v = this.pn.vues && this.pn.vues.get(this.n.id), f = v && this.feuilles.get(v.p);
+    if (f) {                       // la page de référence revient exactement au même endroit de l'écran
+      const r = f.div.getBoundingClientRect(), z = pz.getBoundingClientRect();
+      pz.scrollLeft += r.left - z.left - v.x; pz.scrollTop += r.top - z.top - v.y;
+    } else { pz.scrollLeft = Math.max(0, (pz.scrollWidth - pz.clientWidth) / 2); pz.scrollTop = mv; }
+    this._place = true;
+  }
+  /* position de la vue gardée en mémoire (par note, le temps de la session) : si l'éditeur est refait, rien ne bouge */
+  memoPosition() {
+    if (!this._place || !this.pn.vues || !this.feuilles.size) return;
+    const z = this.pagesZone.getBoundingClientRect(), cy = z.top + z.height / 2;
+    let ref = null;
+    for (const f of this.feuilles.values()) { const r = f.div.getBoundingClientRect(); if (!ref || (r.top <= cy && r.bottom >= cy)) { ref = {f, r}; if (r.top <= cy && r.bottom >= cy) break; } }
+    if (ref && ref.r.width) this.pn.vues.set(this.n.id, {p: ref.f.page.id, x: ref.r.left - z.left, y: ref.r.top - z.top});
+  }
+  /* jamais de redimensionnement pendant un trait, un pincement ou le glisser d'un autocollant : on attend la fin */
+  redimensionnerBientot() {
+    clearTimeout(this._rz);
+    this._rz = setTimeout(() => {
+      if (this.geste || this.pince || this.acGeste || (this.actif && Date.now() - this.actif < 250 && this._place)) return this.redimensionnerBientot();
+      this.redimensionner();
+    }, 120);
   }
   redimensionner() {
     const W = this.largeurBase() * this.zoom;
@@ -2078,7 +2112,17 @@ class EditeurCahier {
     this.n.maj = nowIsoMinutes();
     this.pn.app.sauver();
     this.etat.textContent = "Enregistré ✓";
-    clearTimeout(this._jm); this._jm = setTimeout(() => this.dessinerMiniatures(), 200);
+    clearTimeout(this._jm); this._jm = setTimeout(() => this.majMiniatures(), 200);
+  }
+  /* miniatures : seules les vignettes des pages modifiées sont redessinées, sur place (même taille), et jamais pendant une saisie */
+  majMiniatures() {
+    clearTimeout(this._jm);
+    if (!this.miniatures) return;
+    if (this.geste || this.pince || (this.actif && Date.now() - this.actif < 700)) { this._jm = setTimeout(() => this.majMiniatures(), 400); return; }
+    for (const b of this.mini.querySelectorAll(".mini[data-p]")) {
+      const p = this.n.pages.find(x => x.id === b.dataset.p), c = b.querySelector("canvas");
+      if (p && c && this.editees.has(p.id)) c.replaceWith(canvasPage(p, this.n.papier, 110));
+    }
   }
   rafraichirDistant() {
     const n = this.pn.note(this.n.id);

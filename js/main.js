@@ -140,7 +140,9 @@ class App {
   /* ---------- synchro */
   peutAppliquerDistant() {
     if (this.drag && this.drag.moved) return false;
-    if (this.page === "notes" && this.ecrans && (this.ecrans.notes.sale || (this.ecrans.notes.ed && (this.ecrans.notes.ed.geste || this.ecrans.notes.ed.texteOuvert || this.ecrans.notes.ed.acGeste)))) return false;
+    const ed = this.page === "notes" && this.ecrans && this.ecrans.notes.ed;
+    if (this.page === "notes" && this.ecrans && (this.ecrans.notes.sale || (ed && (ed.geste || ed.pince || ed.texteOuvert || ed.acGeste)))) return false;
+    if (ed && ed.actif && Date.now() - ed.actif < 2500) return false;     // on écrit encore : la mise à jour attend une pause
     return !Pile.some(p => p.estModal);
   }
   apresDistant(noms) {

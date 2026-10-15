@@ -1650,3 +1650,39 @@ body.tel .carte-modale.boutique .bq-grille { grid-template-columns: repeat(2, mi
 @media (orientation: landscape) { body.tel .carte-modale.boutique .bq-grille { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .bq-art > * { overflow-wrap: break-word; word-break: normal; hyphens: auto; -webkit-hyphens: auto; }
 .bq-art .bq-rare { white-space: normal; }
+
+/* v26 — prise de notes : barre d'outils stable (2 rangées de hauteur fixe), autocollants avec les outils, cibles ≥ 44 px */
+.cahier .cah-barre { flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 0; padding: 2px 8px; }
+.cahier .cah-outils, .cahier .cah-options { flex: none; flex-wrap: nowrap; gap: 2px; height: 48px; min-height: 48px; max-height: 48px;
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+.cahier .cah-outils::-webkit-scrollbar, .cahier .cah-options::-webkit-scrollbar { display: none; }
+.cahier .cah-options { border-top: 1px solid var(--rule); }
+.cahier .cah-options > * { flex: none; }
+.cahier .cah-options .espace { flex: 1 0 8px; }
+.cah-outil { width: 44px; height: 44px; flex: none; }
+.cah-sep { flex: none; }
+.cah-outil-ac .cah-ac-img { width: 24px; height: 24px; image-rendering: pixelated; }
+.cah-ep { width: 44px; height: 44px; flex: none; }
+.cah-ep.cah-trait { min-width: 44px; }
+.cah-options .sw { width: 44px; height: 44px; padding: 9px; box-sizing: border-box; background-clip: content-box; border: 0; flex: none;
+  box-shadow: inset 0 0 0 9px var(--surface), inset 0 0 0 10px var(--rule); }
+.cah-options .sw.on { box-shadow: inset 0 0 0 5px var(--surface), inset 0 0 0 7px var(--ink), inset 0 0 0 9px var(--surface); }
+.cah-options .sw.sw-plus { display: inline-flex; align-items: center; justify-content: center; color: var(--muted); background-color: var(--surface2); }
+.cah-options .btn { min-height: 44px; white-space: nowrap; }
+.cahier .cah-aide { white-space: nowrap; }
+/* en-tête : largeurs fixes pour l'état et le numéro de page (le texte change sans rien décaler) */
+.doc-vue .nt-etat { display: inline-block; min-width: 13.5ch; text-align: right; white-space: nowrap; }
+.cahier .cah-num { display: inline-block; min-width: 12.5ch; white-space: nowrap; }
+.doc-barre .btn-ico { min-height: 44px; min-width: 44px; justify-content: center; }
+.cah-titre { min-height: 44px; }
+/* note texte : la même section d'outils (autocollants) sous l'en-tête */
+.nt-outils { flex: none; padding: 2px 8px; }
+.nt-outils .cah-outils { height: 48px; flex-wrap: nowrap; }
+.nt-outils .btn-ac { min-height: 44px; }
+.cahier .cah-outils > * { flex: none; }
+.cahier .cah-outils .espace { flex: 1 0 8px; }
+.cahier .cah-outils.deborde, .cahier .cah-options.deborde { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
+.nt-titre { min-height: 44px; }
+.cahier .cah-options { gap: 0; }
+.cahier .cah-options .cah-sep, .cahier .cah-outils .cah-sep { margin: 0 4px; }
+.cahier .cah-options .espace { flex: 1 0 6px; }
