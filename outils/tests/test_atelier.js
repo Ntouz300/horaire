@@ -36,12 +36,42 @@ async function dessiner(page) {
   verif(!au.petits.filter(x => !/bq-x/.test(x)).length, 'atelier : cibles ≥ 44 px ' + au.petits.slice(0, 6).join(';'));
   verif(!au.coupes.length, 'atelier : aucun texte coupé ' + au.coupes.slice(0, 5).join(';'));
   await dessiner(A.page);
+  // couleur libre : teinte 300, luminosité 40 -> couleur active, puis un trait avec elle
+  await A.page.evaluate(() => { const [h, l] = document.querySelectorAll('.at-curseur'); h.value = 300; h.dispatchEvent(new Event('input')); l.value = 40; l.dispatchEvent(new Event('input')); });
+  const libre = await A.page.evaluate(() => [couleurLibre(300, 40), document.querySelector('.at-active .petit').textContent]);
+  verif(libre[1].endsWith(libre[0]) && libre[0] === '#cc00cc', 'couleur libre choisie : ' + libre.join(' / '));
+  await A.page.locator('.at-outils button:has-text("Crayon")').first().click();
+  { const b = await A.page.locator('.at-toile').boundingBox(), k = b.width / 16;
+    await A.page.mouse.move(b.x + 2 * k + 3, b.y + 12 * k + 3); await A.page.mouse.down();
+    for (let i = 2; i < 14; i++) await A.page.mouse.move(b.x + i * k + k / 2, b.y + 12 * k + k / 2);
+    await A.page.mouse.up(); }
+  verif(await A.page.evaluate(() => document.querySelectorAll('.at-couls .at-coul[data-c="#cc00cc"]').length >= 1), 'couleurs du dessin : la couleur libre y figure');
+  // nuancier
+  await A.page.locator('.at-coul[data-c="#2d8cff"]').first().click();
+  verif(await A.page.evaluate(() => document.querySelector('.at-active .petit').textContent.endsWith('#2d8cff')), 'nuancier : couleur choisie');
   await capture(A.page, 'atelier_dessin_ipad');
+  // limite de 16 couleurs
+  const lim16 = await A.page.evaluate(() => {
+    const at = [...document.querySelectorAll('.carte-modale.atelier')].length && window.__at;
+    return 0; });
+  const t16 = await A.page.evaluate(() => {
+    const a = new AtelierAc(window.app); a.dessiner();
+    for (let i = 0; i < 16; i++) a.px[i] = couleurLibre(i * 20, 50);
+    a.coul = '#123456'; a.outil = 'crayon'; a.appliquer(5, 5); a.finGeste();
+    const refuse = a.px[5 * 16 + 5] === null, msg = a.err.textContent;
+    a.coul = couleurLibre(0, 50); a.appliquer(5, 5);
+    const ok = a.px[5 * 16 + 5] === couleurLibre(0, 50);
+    const sp = spriteDeGrille(a.px, 16);
+    a.fermer();
+    return { refuse, msg, ok, n: sp.split(';')[0].length / 7 };
+  });
+  verif(t16.refuse && /16 couleurs au maximum/.test(t16.msg) && t16.ok && t16.n === 16, '17ᵉ couleur refusée avec message ; 16 couleurs encodées : ' + JSON.stringify(t16));
   await A.page.fill('.atelier input.saisie', 'Mon dragon');
   await A.page.evaluate(() => { window.aleaReel = (() => { const v = [0.3, 0.5]; let i = 0; return () => v[i++ % 2]; })(); });   // rare, prix au milieu
   await A.page.locator('.atelier button:has-text("Créer l\'autocollant")').click();
   await A.page.waitForSelector('.at-resultat');
   const c = await A.page.evaluate(() => { const [k, c] = Object.entries(Creations.info)[0]; return Object.assign({ k, inv: Geos.inventaire(window.app.donnees)[k], fx: !!document.querySelector('.at-resultat .ac-fx-brille'), cj: Geos.compte(window.app).cj }, c); });
+  verif(c.sp.includes('cc00cc') && c.sp.includes('2d8cff') === false, 'sprite enregistré avec la couleur libre : ' + c.sp.slice(0, 40));
   verif(c.rar === 'rare' && c.prix >= 3000 && c.prix <= 6000 && c.prix % 10 === 0, `rareté et prix : ${c.rar}, ${c.prix}`);
   verif(c.fx, 'animation « brille » visible pour un rare');
   verif(c.inv === 1 && c.cj === '2026-10-15' && c.j === '2026-10-15', 'dans l\'inventaire ; cj = jour de Toronto');

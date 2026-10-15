@@ -241,8 +241,8 @@ async function confirmerVenteCreation(app, id) {
 const AT_N = 16;
 class AtelierAc extends Modal {
   constructor(app) {
-    super("Atelier d'autocollants", "Dessine ton autocollant avec la palette du jour. Un seul par jour pour tout ton compte (tous appareils).", {classe: "large"});
-    this.app = app; this.px = new Array(AT_N * AT_N).fill(-1); this.histo = []; this.outil = "crayon"; this.coul = 0; this.resultat = null;
+    super("Atelier d'autocollants", "Dessine ton autocollant avec les couleurs de ton choix (16 au maximum). Un seul par jour pour tout ton compte (tous appareils).", {classe: "large"});
+    this.app = app; this.px = new Array(AT_N * AT_N).fill(null); this.histo = []; this.outil = "crayon"; this.coul = 0; this.resultat = null;
     this.carte.classList.add("atelier");
     this.zone = el("div.at-zone");
     this.carte.append(this.zone);
@@ -270,28 +270,78 @@ class AtelierAc extends Modal {
       return;
     }
     const [nomPal, pal] = paletteDuJour(this.jour);
-    this.pal = pal;
+    if (!this.coul) this.coul = pal[0];
     const outils = el("div.at-outils");
     for (const [v, t] of [["crayon", "Crayon"], ["gros", "Gros crayon"], ["remplir", "Remplir"], ["gomme", "Gomme"]]) {
-      const b = petit(t, () => { this.outil = v; outils.querySelectorAll("button[data-o]").forEach(x => x.className = x.className.replace(/\b(tab_on|ghost)\b/, x.dataset.o === v ? "tab_on" : "ghost")); }, this.outil === v ? "tab_on" : "ghost");
+      const b = petit(t, () => this.choisirOutil(v), this.outil === v ? "tab_on" : "ghost");
       b.dataset.o = v; outils.append(b);
     }
-    outils.append(petit("Annuler", () => this.annuler(), "ghost"), petit("Tout effacer", () => { this.snap(); this.px.fill(-1); this.peindre(); }, "ghost"));
-    const couls = el("div.at-couleurs", {role: "radiogroup", "aria-label": "Palette du jour : " + nomPal});
-    pal.forEach((c, i) => {
-      const b = el("button.at-coul" + (i === this.coul ? ".on" : ""), {type: "button", role: "radio", "aria-checked": String(i === this.coul), title: "Couleur " + (i + 1), "aria-label": "Couleur " + (i + 1)}, el("span", {style: {background: c}}));
-      b.addEventListener("click", () => { this.coul = i; couls.querySelectorAll(".at-coul").forEach((x, j) => { x.classList.toggle("on", j === i); x.setAttribute("aria-checked", String(j === i)); }); if (this.outil === "gomme") this.outil = "crayon"; });
-      couls.append(b);
-    });
+    this.zOutils = outils;
+    outils.append(petit("Annuler", () => this.annuler(), "ghost"), petit("Tout effacer", () => { this.snap(); this.px.fill(null); this.peindre(); }, "ghost"));
+    this.zCouls = el("div.at-couls");
+    this.dessinerCouleurs(nomPal, pal);
     this.toile = el("canvas.at-toile", {width: AT_N * 20, height: AT_N * 20, "aria-label": "Grille de dessin 16 × 16"});
     this.brancher(this.toile);
     this.nom = entree("", {placeholder: "Nom de l'autocollant (facultatif)", maxlength: 40});
     this.creerBtn = bouton("Créer l'autocollant", () => this.creer(), "primary");
-    z.append(el("div.at-pal.petit", null, el("b", {texte: "Palette du jour : " + nomPal}), el("span.muted", {texte: " · change à minuit (heure de Toronto)"})),
-      outils, couls, el("div.at-cadre", null, this.toile), this.nom,
+    z.append(outils, el("div.at-cadre", null, this.toile), this.zCouls, this.nom,
       el("div.petit.muted.at-regle", {texte: "À la création, la rareté et le prix sont tirés au hasard puis gardés : commun 50 % (1 000–3 000), rare 40 % (3 000–6 000), très rare 10 % (6 000–9 000). Vente possible le jour même seulement."}),
       this.creerBtn);
     this.peindre();
+  }
+  choisirOutil(v) {
+    this.outil = v;
+    this.zOutils.querySelectorAll("button[data-o]").forEach(x => x.className = x.className.replace(/\b(tab_on|ghost)\b/, x.dataset.o === v ? "tab_on" : "ghost"));
+  }
+  /* couleurs (v32/v30) : n'importe quelle couleur — couleur active, palette du jour (simple suggestion), nuancier, couleur libre
+     (teinte, luminosité), couleurs déjà dans le dessin (16 au maximum par autocollant) */
+  dessinerCouleurs(nomPal, pal) {
+    const z = this.zCouls; z.innerHTML = "";
+    const pastille = (c, titre) => {
+      const b = el("button.at-coul" + (c === this.coul ? ".on" : ""), {type: "button", title: titre || c, "aria-label": "Couleur " + (titre || c), "aria-pressed": String(c === this.coul)}, el("span", {style: {background: c}}));
+      b.dataset.c = c;
+      b.addEventListener("click", () => this.choisirCouleur(c));
+      return b;
+    };
+    this.apercu = el("span.at-active-coul", {style: {background: this.coul}});
+    this.lblCoul = el("span.petit", {texte: "Couleur active " + this.coul});
+    z.append(el("div.at-active", null, this.apercu, this.lblCoul));
+    z.append(el("div.at-sous.petit", null, el("b", {texte: "Palette du jour : " + nomPal}), el("span.muted", {texte: " (suggestion, change à minuit)"})),
+      el("div.at-couleurs", null, ...pal.map((c, i) => pastille(c, "Palette du jour " + (i + 1)))));
+    z.append(el("div.at-sous.petit", null, el("b", {texte: "Nuancier"})), el("div.at-couleurs", null, ...NUANCIER.map(c => pastille(c))));
+    const h = el("input.at-curseur", {type: "range", min: 0, max: 360, step: 1, value: this.teinte ?? 200, "aria-label": "Teinte"});
+    const l = el("input.at-curseur", {type: "range", min: 0, max: 100, step: 1, value: this.lum ?? 50, "aria-label": "Luminosité"});
+    const libre = el("span.at-libre-coul");
+    const maj = (choisir) => {
+      this.teinte = +h.value; this.lum = +l.value;
+      const c = couleurLibre(this.teinte, this.lum);
+      libre.style.background = c; l.style.setProperty("--teinte", couleurLibre(this.teinte, 50));
+      if (choisir) this.choisirCouleur(c, true);
+    };
+    h.addEventListener("input", () => maj(true)); l.addEventListener("input", () => maj(true));
+    z.append(el("div.at-sous.petit", null, el("b", {texte: "Couleur libre"})),
+      el("div.at-libre", null, libre, el("label.at-ligne", null, el("span.petit", {texte: "Teinte"}), h), el("label.at-ligne", null, el("span.petit", {texte: "Luminosité"}), l)));
+    maj(false);
+    this.zUtil = el("div");
+    z.append(this.zUtil);
+    this.majUtilisees();
+  }
+  /* couleur active ; « garder » : choisie au curseur (on ne redessine pas les curseurs pendant le glisser) */
+  choisirCouleur(c, garder) {
+    this.coul = c;
+    if (this.outil === "gomme") this.choisirOutil("crayon");
+    this.apercu.style.background = c; this.lblCoul.textContent = "Couleur active " + c;
+    this.zCouls.querySelectorAll(".at-coul").forEach(b => { const on = b.dataset.c === c; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); });
+    if (!garder) this.erreur("");
+  }
+  couleursUtilisees() { const v = new Set(); for (const c of this.px) if (c) v.add(c); return v; }
+  majUtilisees() {
+    const u = [...this.couleursUtilisees()], z = this.zUtil;
+    if (!z) return;
+    z.innerHTML = "";
+    if (!u.length) return;
+    z.append(el("div.at-sous.petit", null, el("b", {texte: `Couleurs du dessin (${u.length} / ${AT_MAX_COUL})`})),
+      el("div.at-couleurs", null, ...u.map(c => { const b = el("button.at-coul" + (c === this.coul ? ".on" : ""), {type: "button", title: c, "aria-label": "Couleur " + c}, el("span", {style: {background: c}})); b.dataset.c = c; b.addEventListener("click", () => this.choisirCouleur(c)); return b; })));
   }
   snap() { this.histo.push(this.px.slice()); if (this.histo.length > 50) this.histo.shift(); }
   annuler() { const h = this.histo.pop(); if (h) { this.px = h; this.peindre(); } }
@@ -299,16 +349,17 @@ class AtelierAc extends Modal {
     const cv = this.toile, g = cv.getContext("2d"), k = cv.width / AT_N;
     for (let y = 0; y < AT_N; y++) for (let x = 0; x < AT_N; x++) {
       const v = this.px[y * AT_N + x];
-      g.fillStyle = v >= 0 ? this.pal[v] : ((x + y) % 2 ? "#d9dee8" : "#eef1f6");
+      g.fillStyle = v || ((x + y) % 2 ? "#d9dee8" : "#eef1f6");
       g.fillRect(x * k, y * k, k, k);
     }
     g.strokeStyle = "rgba(0,0,0,.12)"; g.lineWidth = 1;
     for (let i = 1; i < AT_N; i++) { g.beginPath(); g.moveTo(i * k + .5, 0); g.lineTo(i * k + .5, cv.height); g.moveTo(0, i * k + .5); g.lineTo(cv.width, i * k + .5); g.stroke(); }
   }
-  /* applique l'outil à la case (x, y) */
+  /* applique l'outil à la case (x, y) ; une 17ᵉ couleur est refusée (16 au maximum par autocollant) */
   appliquer(x, y) {
     if (x < 0 || y < 0 || x >= AT_N || y >= AT_N) return;
-    const v = this.outil === "gomme" ? -1 : this.coul;
+    const v = this.outil === "gomme" ? null : this.coul;
+    if (v) { const u = this.couleursUtilisees(); if (!u.has(v) && u.size >= AT_MAX_COUL) { this.tropDeCouleurs = true; return; } }
     if (this.outil === "remplir") {
       const cible = this.px[y * AT_N + x];
       if (cible === v) return;
@@ -324,6 +375,11 @@ class AtelierAc extends Modal {
     const r = this.outil === "gros" ? 1 : 0;
     for (let b = y; b <= y + r; b++) for (let a = x; a <= x + r; a++) if (a < AT_N && b < AT_N) this.px[b * AT_N + a] = v;
   }
+  /* fin d'un geste : couleurs du dessin à jour, avertissement si la limite de 16 couleurs a bloqué le geste */
+  finGeste() {
+    this.majUtilisees();
+    if (this.tropDeCouleurs) { this.tropDeCouleurs = false; this.erreur(`${AT_MAX_COUL} couleurs au maximum par autocollant : réutilise une couleur du dessin ou efface-en une.`); }
+  }
   brancher(cv) {
     let actif = null;
     const caseDe = (e) => { const r = cv.getBoundingClientRect(); return [Math.floor((e.clientX - r.left) / r.width * AT_N), Math.floor((e.clientY - r.top) / r.height * AT_N)]; };
@@ -338,11 +394,11 @@ class AtelierAc extends Modal {
       e.preventDefault();
       const [x, y] = caseDe(e); this.appliquer(x, y); this.peindre();
     });
-    const fin = (e) => { if (actif === e.pointerId) actif = null; };
+    const fin = (e) => { if (actif === e.pointerId) { actif = null; this.finGeste(); } };
     cv.addEventListener("pointerup", fin); cv.addEventListener("pointercancel", fin);
   }
   creer() {
-    const sp = spriteDeGrille(this.px, this.pal, AT_N);
+    const sp = spriteDeGrille(this.px, AT_N);
     if (!sp) { this.erreur("Dessine au moins 8 pixels."); return; }
     const nom = this.nom.value.trim() || "Création du " + this.jour.split("-").reverse().slice(0, 2).join("/");
     const c = Creations.creer(this.app, nom, sp);
@@ -377,17 +433,34 @@ class AtelierAc extends Modal {
         bouton("Garder dans l'inventaire", () => { Notifs.bulle(`« ${c.n} » est dans ton inventaire.`); this.fermer(); }, "primary")) : null));
   }
 }
-/* grille (indices de couleur, -1 = vide) -> sprite compact « palette;largeur:pixels », rognée au plus juste ; null si moins de 8 pixels.
+/* grille (couleur « #rrggbb » par case, null = vide) -> sprite compact « palette;largeur:pixels », rognée au plus juste ;
+   lettres A–P dans l'ordre d'apparition (16 couleurs au maximum) ; null si moins de 8 pixels ou plus de 16 couleurs.
    Même encodage que sprite_de_grille (PC). */
-function spriteDeGrille(px, pal, N) {
+const AT_MAX_COUL = 16, AT_LETTRES = "ABCDEFGHIJKLMNOP";
+function spriteDeGrille(px, N) {
   let x0 = N, y0 = N, x1 = -1, y1 = -1, n = 0;
-  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (px[y * N + x] >= 0) { n++; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (px[y * N + x]) { n++; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
   if (n < 8) return null;
-  const L = "ABCDEFGH", vus = new Set();
+  const lettre = new Map();
   let s = "";
-  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const v = px[y * N + x]; if (v >= 0) vus.add(v); s += v >= 0 ? L[v] : "."; }
-  const p = [...vus].sort((a, b) => a - b).map(v => L[v] + pal[v].slice(1)).join("");
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+    const c = px[y * N + x];
+    if (!c) { s += "."; continue; }
+    if (!lettre.has(c)) { if (lettre.size >= AT_MAX_COUL) return null; lettre.set(c, AT_LETTRES[lettre.size]); }
+    s += lettre.get(c);
+  }
+  const p = [...lettre].map(([c, l]) => l + c.slice(1).toLowerCase()).join("");
   return p + ";" + (x1 - x0 + 1) + ":" + s.replace(/(.)\1{2,}/g, (m) => m.length + m[0]);
+}
+/* couleurs courantes du nuancier de l'atelier (mêmes sur le PC) */
+const NUANCIER = ["#000000", "#3a3f4b", "#7d8798", "#c4ccd8", "#ffffff", "#5e3a1c", "#9a6332", "#e0b07a", "#f5d6b4", "#a3262f", "#e5484d", "#ff9fc6",
+  "#ff7ab6", "#f28c28", "#ffd23f", "#fff2a8", "#23843b", "#3fbf5a", "#9be34a", "#2ec4c4", "#2f4f9e", "#2d8cff", "#8fd3ff", "#8b5cf6"];
+/* couleur libre : teinte (0–360) et luminosité (0–100), saturation pleine -> « #rrggbb » (même calcul que couleur_libre, PC) */
+function couleurLibre(h, l) {
+  h = ((h % 360) + 360) % 360; l = Math.max(0, Math.min(100, l)) / 100;
+  const c = 1 - Math.abs(2 * l - 1), x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = l - c / 2;
+  const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  return "#" + [r, g, b].map(v => Math.floor((v + m) * 255 + 0.5).toString(16).padStart(2, "0")).join("");
 }
 
 /* palette du jour de l'atelier (même tirage sur tous les appareils et sur le PC) : 8 couleurs */

@@ -2,7 +2,7 @@
 const { ouvrir, donneesBase, verif, bilan, capture, audit } = require('./h.js');
 const { chromium } = require('/opt/npm-tools/node_modules/playwright');
 const fs = require('fs');
-const URL = 'http://localhost:8790', CLE = 'TESTCLEABCDEFGHJKLMNPQRSTU';
+const URL = 'http://localhost:8790', CLE = 'TESTCLE' + Array.from({ length: 19 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random() * 24)]).join('');
 const serveur = () => fetch(URL + '/__racine').then(r => r.json()).then(r => (r.h && r.h[CLE] && r.h[CLE].v) || {});
 const journal = () => fs.readFileSync('/home/claude/tests/fakefb_journal.jsonl', 'utf8');
 const attendre = (ms) => new Promise(r => setTimeout(r, ms));
@@ -84,7 +84,7 @@ async function creerNote(page, titre, sync) {
   await attendre(3000);
   verif(await A.page.evaluate((id) => window.app.donnees.notes.find(n => n.id === id).titre, S.id) === 'Titre local seulement', 'A : la note privée n\'est pas remplacée par le serveur');
   verif(!A.erreurs.length && !B.erreurs.length, 'aucune erreur de page ' + A.erreurs.concat(B.erreurs).join('\n'));
-  fs.writeFileSync('/home/claude/tests/ids_sync.json', JSON.stringify({ S: S.id, L: L.id }));
+  fs.writeFileSync('/home/claude/tests/ids_sync.json', JSON.stringify({ S: S.id, L: L.id, CLE }));
   await browser.close();
   process.exit(bilan() ? 1 : 0);
 })();

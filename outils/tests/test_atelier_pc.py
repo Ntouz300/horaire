@@ -4,7 +4,7 @@ sys.path.insert(0, "/home/claude/tests")
 from pc_h import charger, verif, bilan, pomper, capture, donnees_base
 URL = "http://localhost:8790"
 CLE = "PCATELIER" + "".join(random.choice("ABCDEFGHJKLMNPQRSTUVWXYZ") for _ in range(17))
-H = charger("/home/claude/pc/horaire_v31.py", donnees_base())
+H = charger("/home/claude/pc/horaire_v32.py", donnees_base())
 T0 = H._utc_ms(2026, 10, 15, 16)
 dec = {"v": 0}
 H.maintenant_ms = lambda: T0 + dec["v"]
@@ -15,18 +15,34 @@ at = H.AtelierAcPC(app); pomper(app, .8)
 cv = at.toile
 for x in range(3, 13):
     at._appui(type("E", (), {"x": x * at.K + 5, "y": 3 * at.K + 5})())
-at.choisir_couleur(4); at.choisir_outil("gros")
+at.choisir_couleur("#ff7a1a"); at.choisir_outil("gros")
 for x in range(4, 12):
     at._bouge(type("E", (), {"x": x * at.K + 5, "y": 8 * at.K + 5})())
+at.v_teinte.set(300); at.v_lum.set(40); at._libre(True)
+verif(at.coul == "#cc00cc" and at.coul == H.couleur_libre(300, 40), "couleur libre choisie : " + at.coul)
+at.choisir_outil("crayon")
+for x in range(2, 14):
+    at._bouge(type("E", (), {"x": x * at.K + 5, "y": 12 * at.K + 5})())
+at._fin()
+verif("#cc00cc" in at.couleurs_utilisees(), "couleurs du dessin : la couleur libre y figure")
 at.v_nom.set("Mon robot")
 pomper(app, .2)
 capture("atelier_dessin_pc")
+sauve = list(at.px)
+at.px = [H.couleur_libre(i * 20, 50) for i in range(16)] + [None] * 240
+at.choisir_couleur("#123456"); at.appliquer(5, 5); at._fin()
+refuse, msg = at.px[5 * 16 + 5] is None, at.err.cget("text")
+at.choisir_couleur(H.couleur_libre(0, 50)); at.appliquer(5, 5)
+verif(refuse and "16 couleurs au maximum" in msg and at.px[85] == H.couleur_libre(0, 50) and len(H.sprite_de_grille(at.px, 16).split(";")[0]) == 16 * 7,
+      "17ᵉ couleur refusée avec message ; 16 couleurs encodées")
+at.px = sauve; at.peindre(); at._fin(); at.err.config(text="")
 vals = iter([0.05, 0.5])
 H._ALEA.random = lambda: next(vals)
 at.creer(); pomper(app, .5)
 k, c = next(iter(H.CREATIONS.items()))
 verif(c["rar"] == "tres_rare" and 6000 <= c["prix"] <= 9000 and c["prix"] % 10 == 0, f"très rare, prix {c['prix']}")
 verif(H.effet_autocollant(k) == "scintille", "animation « scintille » pour un très rare")
+verif("cc00cc" in c["sp"], "sprite enregistré avec la couleur libre : " + c["sp"][:40])
 e = H.geos_compte(app)
 verif(e.get("cj") == "2026-10-15" and e["a"].get(k) == 1, "cj = jour de Toronto, dans l'inventaire")
 capture("atelier_resultat_pc")
@@ -60,7 +76,10 @@ for _ in range(40):
     g = [rnd.choice([-1, -1, -1, rnd.randrange(8)]) for _ in range(256)]
     grilles.append(g)
 pal = H.palette_du_jour("2026-10-15")[1]
-json.dump({"grilles": grilles, "pal": pal, "sp": [H.sprite_de_grille(g, pal, 16) for g in grilles],
+coul = [H.couleur_libre(h, l) for h in range(0, 361, 15) for l in range(0, 101, 10)]
+grilles = [[(rnd.choice(coul[:rnd.randint(1, 40)]) if rnd.random() < .4 else None) for _ in range(256)] for _ in range(60)]
+# limite : 17ᵉ couleur refusée
+json.dump({"grilles": grilles, "pal": pal, "coul": coul, "sp": [H.sprite_de_grille(g, 16) for g in grilles],
            "rar": [H.creation_rarete(x / 1000) for x in range(1000)], "prix": [H.creation_prix(r, x / 997) for r in ("commun", "rare", "tres_rare") for x in range(997)],
            "palj": [H.palette_du_jour(H.decaler_jour("2026-01-01", i))[0] for i in range(120)],
            "norm": [H.normaliser_creation("c_abcd1234", x) for x in (
@@ -77,7 +96,7 @@ body = json.dumps({"gx_ipad-zz": {"j": json.dumps({"g": 0, "d": 0, "j": "", "r":
                    "cr": {"c_ipad1234": {"n": "Fait sur l'iPad", "sp": "A112233;3:AAAAAAAAA", "rar": "rare", "prix": 4000, "j": "2026-10-15", "t": 1}}},
                    separators=(",", ":")), "t": 1, "par": "ipad-zz"}}).encode()
 urllib.request.urlopen(urllib.request.Request(URL + f"/h/{CLE}/v.json", data=body, method="PATCH", headers={"Content-Type": "application/json"}))
-H3 = charger("/home/claude/pc/horaire_v31.py", donnees_base())
+H3 = charger("/home/claude/pc/horaire_v32.py", donnees_base())
 H3.maintenant_ms = lambda: T0
 json.dump(cfg, open(H3.SYNC_FILE, "w"))
 app.destroy()

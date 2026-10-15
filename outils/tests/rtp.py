@@ -4,7 +4,7 @@
 import sys, json
 sys.path.insert(0, "/home/claude/tests")
 from pc_h import charger
-H = charger("/home/claude/pc/horaire_v31.py")
+H = charger("/home/claude/pc/horaire_v32.py")
 H.charger_pack()
 JX = H.JX
 cat = JX["autocollants"]
