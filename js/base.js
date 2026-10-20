@@ -50,7 +50,7 @@ const DEFAUT_REGLAGES = {theme: "nuit", accent: "", forme: 2, texte: 100, h_debu
   notes_sync: "auto", notes_locales: [], rail_replie: false,
   fb_geos_local: false, fb_geos_groupe: false, fb_jeu_unique: false, fb_pause_fond: false, fb_notes_manuel: false, fb_estimation: false};
 const REG_LOCAUX = ["vue", "plein_ecran", "texte", "horaire", "page", "vue3d", "onglets_notes", "canevas_vues", "canevas_fond", "notes_repliees", "transferts_actif", "transferts_port", "icones_theme", "reduire_effets", "son_ambiance", "volume_ambiance", "brume",
-  "jeux_son", "jeux_anim", "geos_apparition", "jeux_mise", "jeux_choix", "notes_locales", "rail_replie", "inv_tri",
+  "jeux_son", "jeux_anim", "geos_apparition", "jeux_mise", "jeux_choix", "notes_locales", "rail_replie", "inv_tri", "menu_notes_reduit",
   "fb_geos_local", "fb_geos_groupe", "fb_jeu_unique", "fb_pause_fond", "fb_notes_manuel", "fb_estimation"];   // réglages propres à l'appareil
 /* synchronisation des notes : « auto » (toutes) ou « manuel » (interrupteur par note) ; le mode est synchronisé,
    la liste des notes gardées sur cet appareil (notes_locales) ne l'est pas. Le réglage local fb_notes_manuel force le mode manuel ici. */

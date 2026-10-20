@@ -3,7 +3,7 @@ import math, sys, json
 sys.path.insert(0, "/home/claude/tests")
 from pc_h import charger, verif, bilan, ev, capture, pomper
 
-H = charger(sys.argv[1] if len(sys.argv) > 1 else "/home/claude/pc/horaire_v32.py")
+H = charger(sys.argv[1] if len(sys.argv) > 1 else "/home/claude/pc/horaire_v33.py")
 app = H.App()
 pomper(app, 1)
 app.ouvrir_notes("n1")

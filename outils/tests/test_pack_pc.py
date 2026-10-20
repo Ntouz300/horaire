@@ -3,7 +3,7 @@ import json, sys, time
 sys.path.insert(0, "/home/claude/tests")
 from pc_h import charger, verif, bilan, pomper, capture, donnees_base
 d = donnees_base()
-H = charger(sys.argv[1] if len(sys.argv) > 1 else "/home/claude/pc/horaire_v32.py", d)
+H = charger(sys.argv[1] if len(sys.argv) > 1 else "/home/claude/pc/horaire_v33.py", d)
 verif(not H.PACK_AC["pret"] and len(H.JX["autocollants"]) == 166, "chargement du module : paquet non décodé, 166 autocollants")
 t = time.time(); H.charger_pack(); dt_ = time.time() - t
 verif(H.PACK_AC["pret"] and len(H.JX["autocollants"]) == 1016, f"charger_pack : 1016 autocollants en {dt_*1000:.0f} ms")
@@ -14,7 +14,7 @@ verif(len(pc) == len(js) and not diff, f"PC = iPad : mêmes ids, noms, prix, ran
 # note qui contient un autocollant du paquet (nouveau module, paquet non chargé)
 d2 = donnees_base()
 d2["notes"][0]["autocollants"].append({"id": "z1", "s": "p_bolide_bleu", "p": "p1", "x": 300, "y": 800, "t": 120, "r": 30})
-H = charger(sys.argv[1] if len(sys.argv) > 1 else "/home/claude/pc/horaire_v32.py", d2)
+H = charger(sys.argv[1] if len(sys.argv) > 1 else "/home/claude/pc/horaire_v33.py", d2)
 app = H.App()
 verif(H.PACK_AC["pret"], "démarrage avec une note qui l'utilise : paquet décodé")
 pomper(app, .8)

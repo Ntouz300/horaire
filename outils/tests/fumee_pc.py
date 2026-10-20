@@ -1,7 +1,7 @@
 import sys, traceback
 sys.path.insert(0, "/home/claude/tests")
 from pc_h import charger, verif, bilan, pomper, donnees_base
-H = charger("/home/claude/pc/horaire_v32.py", donnees_base())
+H = charger("/home/claude/pc/horaire_v33.py", donnees_base())
 app = H.App(); pomper(app, 1)
 err = []
 app.report_callback_exception = lambda *a: err.append("".join(traceback.format_exception(*a)))

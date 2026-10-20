@@ -2,7 +2,7 @@
 import json, sys, subprocess
 sys.path.insert(0, "/home/claude/tests")
 from pc_h import charger, verif, bilan
-H = charger("/home/claude/pc/horaire_v32.py")
+H = charger("/home/claude/pc/horaire_v33.py")
 H.charger_pack()
 jours = [H.decaler_jour("2026-01-01", i) for i in range(0, 800, 2)]
 inst = []

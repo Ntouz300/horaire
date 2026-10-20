@@ -4,7 +4,7 @@ sys.path.insert(0, "/home/claude/tests")
 from pc_h import charger, verif, bilan, pomper, capture, donnees_base
 URL = "http://localhost:8790"
 CLE = "PCATELIER" + "".join(random.choice("ABCDEFGHJKLMNPQRSTUVWXYZ") for _ in range(17))
-H = charger("/home/claude/pc/horaire_v32.py", donnees_base())
+H = charger("/home/claude/pc/horaire_v33.py", donnees_base())
 T0 = H._utc_ms(2026, 10, 15, 16)
 dec = {"v": 0}
 H.maintenant_ms = lambda: T0 + dec["v"]
@@ -96,7 +96,7 @@ body = json.dumps({"gx_ipad-zz": {"j": json.dumps({"g": 0, "d": 0, "j": "", "r":
                    "cr": {"c_ipad1234": {"n": "Fait sur l'iPad", "sp": "A112233;3:AAAAAAAAA", "rar": "rare", "prix": 4000, "j": "2026-10-15", "t": 1}}},
                    separators=(",", ":")), "t": 1, "par": "ipad-zz"}}).encode()
 urllib.request.urlopen(urllib.request.Request(URL + f"/h/{CLE}/v.json", data=body, method="PATCH", headers={"Content-Type": "application/json"}))
-H3 = charger("/home/claude/pc/horaire_v32.py", donnees_base())
+H3 = charger("/home/claude/pc/horaire_v33.py", donnees_base())
 H3.maintenant_ms = lambda: T0
 json.dump(cfg, open(H3.SYNC_FILE, "w"))
 app.destroy()

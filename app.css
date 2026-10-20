@@ -1824,3 +1824,11 @@ body.tel .inv-filtres select { font-size: 14px; padding-left: 10px; padding-righ
 .at-curseur[aria-label="Luminosité"]::-moz-range-track { background: linear-gradient(90deg, #000, var(--teinte, #3fa7ff), #fff); }
 .at-curseur::-moz-range-thumb { width: 26px; height: 26px; border-radius: 50%; background: #fff; border: 2px solid #1b1d27; }
 .at-couleurs { gap: 4px; }
+
+/* v31 — menu du haut des notes réduit (réglage local menu_notes_reduit) : bouton toujours visible au bout de la rangée 1 */
+.cahier .cah-ligne1 { display: flex; align-items: center; height: 48px; min-height: 48px; max-height: 48px; }
+.cahier .cah-ligne1 > .cah-outils { flex: 1 1 auto; min-width: 0; }
+.cah-menu-bascule { flex: none; margin-left: 4px; }
+.nt-outils .cah-menu-bascule { margin-left: auto; }
+.doc-vue.menu-reduit > header.doc-barre { display: none; }
+.doc-ouvert.menu-notes-reduit > .doc-onglets { display: none; }

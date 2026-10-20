@@ -13,7 +13,7 @@ def serveur():
     return ((r.get("h") or {}).get(CLE) or {}).get("v") or {}
 
 
-H = charger(sys.argv[1] if len(sys.argv) > 1 else "/home/claude/pc/horaire_v32.py")
+H = charger(sys.argv[1] if len(sys.argv) > 1 else "/home/claude/pc/horaire_v33.py")
 with open(H.SYNC_FILE, "w", encoding="utf-8") as f:
     json.dump({"actif": True, "url": URL, "cle": CLE, "appareil": "pc-test01", "base": {}, "tl": {}, "supprimees": []}, f)
 app = H.App()

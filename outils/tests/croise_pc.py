@@ -2,7 +2,7 @@ import json, sys, random
 sys.path.insert(0, "/home/claude/tests")
 from pc_h import charger, verif, bilan, pomper, donnees_base
 CLE = sys.argv[1]
-H = charger("/home/claude/pc/horaire_v32.py", donnees_base())
+H = charger("/home/claude/pc/horaire_v33.py", donnees_base())
 json.dump({"actif": True, "url": "http://localhost:8790", "cle": CLE, "appareil": "pc-croise", "base": {}, "tl": {}, "supprimees": []}, open(H.SYNC_FILE, "w"))
 app = H.App(); pomper(app, 3)
 px = [None] * 256

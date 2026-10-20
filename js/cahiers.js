@@ -942,6 +942,7 @@ class PageNotes {
     this.ed = n.type === "cahier" ? new EditeurCahier(this, n) : new EditeurTexte(this, n);
     const ong = this.barreOnglets();
     if (ong) z.append(ong);
+    z.classList.toggle("menu-notes-reduit", menuNotesReduit(this.app));
     z.append(this.ed.el);
     this.ed.apresAffichage && this.ed.apresAffichage();
   }
@@ -1101,6 +1102,36 @@ class EditeurDossier extends Modal {
 }
 
 /* ---------- note texte */
+/* ---------- menu du haut des notes réduit (v33/v31) : réglage local « menu_notes_reduit » (REG_LOCAUX, jamais synchronisé).
+   Réduit : l'en-tête du document (retour, miniatures, titre, page n / m, état, zoom, Page, micro, exporter, réglages, favori)
+   et la barre d'onglets sont masqués ; restent les outils, leurs réglages, Autocollants, annuler / rétablir et ce bouton.
+   La bascule n'a lieu qu'entre deux gestes ; la page reste à la même place à l'écran (défilement compensé). */
+function menuNotesReduit(app) { return !!(app && app.reglages && app.reglages.menu_notes_reduit === true); }
+function boutonMenuNotes(ed) {
+  const b = el("button.cah-outil.cah-menu-bascule", {type: "button"});
+  const maj = () => {
+    const r = menuNotesReduit(ed.pn.app);
+    b.title = r ? "Rétablir le menu" : "Réduire le menu";
+    b.setAttribute("aria-label", b.title); b.setAttribute("aria-pressed", String(r));
+    b.innerHTML = ""; b.append(icone(r ? "bas" : "haut", 20));
+  };
+  b.addEventListener("click", () => basculerMenuNotes(ed, maj));
+  maj();
+  return b;
+}
+function basculerMenuNotes(ed, maj, essais = 0) {
+  const occupe = ed.geste || ed.pince || ed.acGeste || ed.selGeste || (ed.actif && Date.now() - ed.actif < 250);
+  if (occupe && essais < 40) { setTimeout(() => basculerMenuNotes(ed, maj, essais + 1), 150); return; }   // jamais pendant un geste
+  if (ed.texteOuvert) ed.texteOuvert.blur();            // zone de texte du cahier : la frappe se termine d'abord
+  const app = ed.pn.app, r = !menuNotesReduit(app), z = ed.pagesZone, t0 = z ? z.getBoundingClientRect().top : 0;
+  app.reglages.menu_notes_reduit = r;
+  app.enregistrerLocal();
+  ed.el.classList.toggle("menu-reduit", r);
+  ed.pn.el.classList.toggle("menu-notes-reduit", r);
+  if (z) { const t1 = z.getBoundingClientRect().top; if (t1 !== t0) z.scrollTop += t1 - t0; }
+  maj();
+}
+
 class EditeurTexte {
   constructor(pn, n) {
     this.pn = pn; this.n = n;
@@ -1109,7 +1140,7 @@ class EditeurTexte {
     this.texte = el("textarea.nt-texte", {placeholder: "Écris ici… (Scribble : tu peux aussi écrire au crayon dans ce champ)", oninput: () => this.modifie()});
     this.texte.value = n.texte || "";
     this.etat = el("span.mono.muted.nt-etat", {texte: ""});
-    this.el = el("div.doc-vue", null,
+    this.el = el("div.doc-vue" + (menuNotesReduit(pn.app) ? ".menu-reduit" : ""), null,
       el("header.doc-barre", null, boutonIcone("retour", "Bibliothèque", () => pn.fermerDoc(), "tab"), el("span.espace"), this.etat,
         boutonIcone("etoile", "", () => { n.epingle = !n.epingle; this.modifie(true); this.majFav(); }, "ghost"),
         boutonVocaux(pn.app, {note: n.id}, `Note : ${n.titre || "Sans titre"}`, () => this.enregistrer()),
@@ -1117,7 +1148,8 @@ class EditeurTexte {
         boutonIcone("exporter", "", () => { this.enregistrer(); new ExportNote(n, null).montrer(); }, "ghost")),
       el("div.cah-barre.nt-outils", null, el("div.cah-outils", null, boutonAutocollants(() => this.ajouterAutocollant()), el("span.cah-sep"),
         el("button.cah-outil", {type: "button", title: "Annuler (autocollants)", "aria-label": "Annuler", onclick: () => this.annulerAc()}, icone("annuler", 20)),
-        el("button.cah-outil", {type: "button", title: "Rétablir (autocollants)", "aria-label": "Rétablir", onclick: () => this.refaireAc()}, icone("refaire", 20)))),
+        el("button.cah-outil", {type: "button", title: "Rétablir (autocollants)", "aria-label": "Rétablir", onclick: () => this.refaireAc()}, icone("refaire", 20))),
+        boutonMenuNotes(this)),
       el("section.carte.doc-texte-ed", {style: {background: pc.fond, color: pc.encre}}, this.titre, el("div.nt-sep"), this.texte));
     // thème Hollow Knight : les notes au papier par défaut prennent l'allure d'un journal ancien
     if (themeHK() && !PAPIER_COUL[n.papier]) {
@@ -1320,7 +1352,9 @@ class EditeurCahier {
     this.piste = el("div.cah-piste");
     this.pagesZone.append(this.piste);
     this.mini = el("aside.cah-mini");
-    this.el = el("div.doc-vue.cahier" + (this.miniatures ? ".avec-mini" : ""), null, tete, el("div.cah-barre", null, this.barreOutils, this.optOutil),
+    // v33/v31 : bouton « Réduire le menu » au bout de la rangée 1, hors de la partie qui défile (toujours visible)
+    this.el = el("div.doc-vue.cahier" + (this.miniatures ? ".avec-mini" : "") + (menuNotesReduit(this.pn.app) ? ".menu-reduit" : ""), null, tete,
+      el("div.cah-barre", null, el("div.cah-ligne1", null, this.barreOutils, boutonMenuNotes(this)), this.optOutil),
       el("div.cah-corps", null, this.mini, this.pagesZone, this.barreSel));
     if ((n.texte || "").trim()) this.piste.append(el("details.cah-texte", null, el("summary", {texte: "Texte tapé de cette note"}),
       Object.assign(el("textarea.saisie", {rows: 4, oninput: (e) => { this.n.texte = e.target.value; this.modifie(); }}), {value: n.texte})));
